@@ -89,7 +89,7 @@
   <div id="notesTab" class="tab">
 
   <div id="jssNotes">
-    <h2>Upload your notes</h2>
+    <h2>Upload a photo</h2>
     <input type="file" accept="image/*" id="photo">
     <br><br>
     <img id="preview" width="200">
@@ -190,10 +190,10 @@ document.getElementById("goLogin").addEventListener("click", function () {
 function showWelcome(user) {
   const m = user.user_metadata;
   document.getElementById("welcome").innerText =
-    "Welcome, " + m.name + " (" + m.studentClass + ", " + m.school + ")";
+    "Welcome, " + m.name + " (" + m.studentClass + ", " + m.school0
 
   const isJSS = m.studentClass.startsWith("JSS");
-  document.getElementById("jssNotes").classList.toggle("hidden", !isJSS);
+  document.getElementById("jssNotes").classList.remove("hidden");
   document.getElementById("ssTopics").classList.toggle("hidden", isJSS);
   if (!isJSS) {
     loadMyTopics();
