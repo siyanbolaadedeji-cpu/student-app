@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Student App</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="welcomePage" class="screen">
+  <div class="hero">
+    <div class="heroIcons">📚 ✏️ 🎓</div>
+    <h1>Welcome to the Student App</h1>
+    <p>Study smarter with questions from your own notes.</p>
+  </div>
+
+  <div class="features">
+    <div class="card"><span>📝</span><br>Upload notes</div>
+    <div class="card"><span>❓</span><br>Practice quizzes</div>
+    <div class="card"><span>⏰</span><br>Study reminders</div>
+  </div>
+
+  <br>
+  <button id="startBtn">Register</button>
+  <button id="goLogin">Login</button>
+</div>
+
+  <div id="register" class="screen hidden">
+    <h1>Student Registration</h1>
+    <input id="username" placeholder="Choose a username">
+<br><br>
+<div class="pwWrap">
+  <input id="password" type="password" placeholder="Choose a password (6+ characters)">
+  <span class="eye" data-target="password">👁</span>
+</div>
+<br><br>
+    <input id="name" placeholder="Full name">
+    <br><br>
+    <input id="school" list="schoolList" placeholder="Type your school name">
+<datalist id="schoolList">
+  <option value="School A">
+  <option value="School B">
+  <option value="School C">
+</datalist>
+    <br><br>
+    <select id="studentClass">
+  <option value="">Select your class</option>
+  <option>JSS 1</option>
+  <option>JSS 2</option>
+  <option>JSS 3</option>
+  <option>SS 1</option>
+  <option>SS 2</option>
+  <option>SS 3</option>
+</select>
+<br><br>
+<select id="gender">
+  <option value="">Select your gender</option>
+  <option>Male</option>
+  <option>Female</option>
+</select>
+<br><br>
+<input id="parentPhone" type="tel" placeholder="Parent's WhatsApp number (e.g. 08012345678)">
+<br><br>
+    <button id="registerBtn">Register</button>
+    <p id="error"></p>
+  </div>
+  
+  <div id="loginPage" class="screen hidden">
+  <h1>Student Login</h1>
+  <input id="loginUser" placeholder="Username">
+  <br><br>
+  <div class="pwWrap">
+  <input id="loginPass" type="password" placeholder="Password">
+  <span class="eye" data-target="loginPass">👁</span>
+</div>
+
+  <br><br>
+  <button id="loginBtn">Log in</button>
+  <p id="loginError"></p>
+</div>
+
+<div id="home" class="screen hidden">
+  <h1 id="welcome"></h1>
+  <button id="logout">Log out</button>
+  <br><br>
+  <button class="menuBtn" data-tab="notesTab">Notes</button>
+  <button class="menuBtn" data-tab="questionsTab">Questions</button>
+  <button class="menuBtn" data-tab="timetableTab">Timetable</button>
+
+  <div id="notesTab" class="tab">
+
+  <div id="jssNotes">
+    <h2>Upload your notes</h2>
+    <input type="file" accept="image/*" id="photo">
+    <br><br>
+    <img id="preview" width="200">
+    <br><br>
+    <button id="uploadBtn">Upload note</button>
+    <p id="uploadMsg"></p>
+  </div>
+
+  <div id="ssTopics" class="hidden">
+    <h2>Topic you are treating</h2>
+    <select id="topicSubject">
+      <option value="">Select subject</option>
+      <option>English</option>
+      <option>Mathematics</option>
+      <option>Physics</option>
+      <option>Chemistry</option>
+      <option>Biology</option>
+      <option>Further Mathematics</option>
+    </select>
+    <br><br>
+    <input id="topicName" placeholder="Type the topic">
+    <br><br>
+    <button id="topicBtn">Send topic</button>
+    <p id="topicMsg"></p>
+    <h3>My topics</h3>
+    <div id="myTopics"></div>
+  </div>
+
+</div>
+
+<div id="questionsTab" class="tab hidden">
+  <h2>My Quizzes</h2>
+  <div id="quizList"></div>
+
+  <div id="quizTake" class="hidden">
+    <h3 id="quizTitleShow"></h3>
+    <div id="quizQuestions"></div>
+    <button id="submitQuiz">Submit answers</button>
+    <button id="backQuiz">Back</button>
+    <h3 id="quizScore"></h3>
+  </div>
+</div>
+  
+  <div id="timetableTab" class="tab hidden">
+  <h2>My Study Timetable</h2>
+  <input id="ttSubject" placeholder="Subject">
+  <br><br>
+  <select id="ttDay">
+    <option>Monday</option>
+    <option>Tuesday</option>
+    <option>Wednesday</option>
+    <option>Thursday</option>
+    <option>Friday</option>
+    <option>Saturday</option>
+    <option>Sunday</option>
+  </select>
+  <br><br>
+  <input id="ttTime" type="time">
+  <br><br>
+  <button id="addTt">Add to timetable</button>
+  <div id="ttList"></div>
+</div>
+
+<div id="reminderBox" class="hidden">
+  <h2>⏰ Study Time</h2>
+  <p id="reminderText"></p>
+  <button id="dismissBtn">OK</button>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <script>
+  const db = supabase.createClient(
+  "https://smgjxokbiielnvgduqty.supabase.co",
+  "sb_publishable_T_CKX3uRL-xNfVrFOpHZPQ_eoXCdP6F"
+);
+
+function makeEmail(username) {
+  return username.toLowerCase() + "@studentapp.com";
+}
+  
+    function showScreen(id) {
+  const screens = document.querySelectorAll(".screen");
+  for (let i = 0; i < screens.length; i++) {
+    screens[i].classList.add("hidden");
+  }
+  document.getElementById(id).classList.remove("hidden");
+}
+
+document.getElementById("startBtn").addEventListener("click", function () {
+  showScreen("register");
+});
+document.getElementById("goLogin").addEventListener("click", function () {
+  showScreen("loginPage");
+});
+
+function showWelcome(user) {
+  const m = user.user_metadata;
+  document.getElementById("welcome").innerText =
+    "Welcome, " + m.name + " (" + m.studentClass + ", " + m.school + ")";
+
+  const isJSS = m.studentClass.startsWith("JSS");
+  document.getElementById("jssNotes").classList.toggle("hidden", !isJSS);
+  document.getElementById("ssTopics").classList.toggle("hidden", isJSS);
+  if (!isJSS) {
+    loadMyTopics();
+  }
+}
+function cleanPhone(raw) {
+  let d = raw.replace(/\D/g, "");
+  if (d.startsWith("0")) {
+    d = "234" + d.slice(1);
+  }
+  return d;
+}
+
+document.getElementById("registerBtn").addEventListener("click", async function () {
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+  const name = document.getElementById("name").value.trim();
+  const school = document.getElementById("school").value.trim();
+  const studentClass = document.getElementById("studentClass").value;
+  const gender = document.getElementById("gender").value;
+  const parentPhone = cleanPhone(document.getElementById("parentPhone").value);
+  const msg = document.getElementById("error");
+
+  if (username === "" || password === "" || name === "" ||
+      school === "" || studentClass === "" || gender === "") {
+    msg.innerText = "Please fill in all the fields.";
+    return;
+  }
+  if (username.includes(" ")) {
+    msg.innerText = "Username cannot have spaces.";
+    return;
+  }
+  if (password.length < 6) {
+    msg.innerText = "Password must be at least 6 characters.";
+    return;
+  }
+  if (!/^234\d{10}$/.test(parentPhone)) {
+    msg.innerText = "Enter a valid parent WhatsApp number, like 08012345678.";
+    return;
+  }
+
+  msg.innerText = "Creating your account...";
+  const result = await db.auth.signUp({
+    email: makeEmail(username),
+    password: password,
+    options: {
+      data: { name: name, school: school,
+              studentClass: studentClass, gender: gender }
+    }
+  });
+
+  if (result.error) {
+    msg.innerText = result.error.message;
+    return;
+  }
+  if (!result.data.session) {
+    msg.innerText = "Account created, but email confirmation is still ON in Supabase.";
+    return;
+  }
+
+  await db.from("profiles").insert({
+    username: username,
+    student_name: name,
+    school: school,
+    class: studentClass,
+    gender: gender,
+    parent_phone: parentPhone
+  });
+
+  msg.innerText = "";
+  showWelcome(result.data.user);
+  showScreen("home");
+});
+
+document.getElementById("loginBtn").addEventListener("click", async function () {
+  const username = document.getElementById("loginUser").value.trim();
+  const password = document.getElementById("loginPass").value;
+  const msg = document.getElementById("loginError");
+
+  msg.innerText = "Logging in...";
+  const result = await db.auth.signInWithPassword({
+    email: makeEmail(username),
+    password: password
+  });
+
+  if (result.error) {
+    msg.innerText = "Wrong username or password.";
+    return;
+  }
+  msg.innerText = "";
+  showWelcome(result.data.user);
+  showScreen("home");
+});
+
+    const photo = document.getElementById("photo");
+    const preview = document.getElementById("preview");
+
+    photo.addEventListener("change", function () {
+      preview.src = URL.createObjectURL(photo.files[0]);
+    });
+
+    document.getElementById("logout").addEventListener("click", async function () {
+  await db.auth.signOut();
+  showScreen("welcomePage");
+});
+function showTab(id) {
+  const tabs = document.querySelectorAll(".tab");
+  for (let i = 0; i < tabs.length; i++) {
+    tabs[i].classList.add("hidden");
+    if (id === "questionsTab") {
+    loadQuizzes();
+  }
+  }
+  document.getElementById(id).classList.remove("hidden");
+}
+
+const menuButtons = document.querySelectorAll(".menuBtn");
+for (let i = 0; i < menuButtons.length; i++) {
+  menuButtons[i].addEventListener("click", function () {
+    showTab(this.dataset.tab);
+  });
+}
+let timetable = JSON.parse(localStorage.getItem("timetable")) || [];
+
+function showTimetable() {
+  const ttBox = document.getElementById("ttList");
+  ttBox.innerHTML = "";
+  for (let i = 0; i < timetable.length; i++) {
+    ttBox.innerHTML += "<p>" + timetable[i].day + ", " +
+      timetable[i].time + " - " + timetable[i].subject +
+      " <button class='delBtn' onclick='deleteSlot(" + i + ")'>X</button></p>";
+  }
+}
+
+function deleteSlot(i) {
+  timetable.splice(i, 1);
+  localStorage.setItem("timetable", JSON.stringify(timetable));
+  showTimetable();
+}
+document.getElementById("addTt").addEventListener("click", function () {
+  const subject = document.getElementById("ttSubject").value.trim();
+  const day = document.getElementById("ttDay").value;
+  const time = document.getElementById("ttTime").value;
+
+  if (subject === "" || time === "") {
+    return;
+  }
+
+  timetable.push({ subject: subject, day: day, time: time });
+  localStorage.setItem("timetable", JSON.stringify(timetable));
+  document.getElementById("ttSubject").value = "";
+  showTimetable();
+});
+
+showTimetable();
+    
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday",
+  "Thursday", "Friday", "Saturday"];
+const fired = {};
+
+let audioCtx;
+
+document.addEventListener("click", function () {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}, { once: true });
+
+function playBeep() {
+  if (!audioCtx) {
+    return;
+  }
+  for (let i = 0; i < 5; i++) {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.value = 880;
+    const start = audioCtx.currentTime + i * 0.6;
+    gain.gain.setValueAtTime(0.5, start);
+    osc.start(start);
+    osc.stop(start + 0.4);
+  }
+}
+
+function showReminder(subject) {
+  playBeep();
+  if (navigator.vibrate) {
+    navigator.vibrate([500, 300, 500]);
+  }
+  try {
+    if (Notification.permission === "granted") {
+      new Notification("Time to study!", { body: subject });
+    }
+  } catch (e) {}
+  document.getElementById("reminderText").innerText =
+    "It's time to study " + subject;
+  document.getElementById("reminderBox").classList.remove("hidden");
+}
+
+function checkAlarms() {
+  const now = new Date();
+  const today = days[now.getDay()];
+  const current = String(now.getHours()).padStart(2, "0") + ":" +
+    String(now.getMinutes()).padStart(2, "0");
+
+  for (let i = 0; i < timetable.length; i++) {
+    const slot = timetable[i];
+    const key = now.toDateString() + slot.time + slot.subject;
+    if (slot.day === today && slot.time === current && !fired[key]) {
+      fired[key] = true;
+      showReminder(slot.subject);
+    }
+  }
+}
+
+setInterval(checkAlarms, 10000);
+
+document.getElementById("dismissBtn").addEventListener("click", function () {
+  document.getElementById("reminderBox").classList.add("hidden");
+});
+
+document.getElementById("addTt").addEventListener("click", function () {
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+});
+
+const eyes = document.querySelectorAll(".eye");
+for (let i = 0; i < eyes.length; i++) {
+  eyes[i].addEventListener("click", function () {
+    const field = document.getElementById(this.dataset.target);
+    if (field.type === "password") {
+      field.type = "text";
+      this.innerText = "🙈";
+    } else {
+      field.type = "password";
+      this.innerText = "👁";
+    }
+  });
+}
+
+document.getElementById("uploadBtn").addEventListener("click", async function () {
+  const msg = document.getElementById("uploadMsg");
+  const file = photo.files[0];
+
+  if (!file) {
+    msg.innerText = "Please choose a photo first.";
+    return;
+  }
+
+  const userResult = await db.auth.getUser();
+  const user = userResult.data.user;
+  const m = user.user_metadata;
+
+  const ext = file.name.split(".").pop();
+  const path = user.id + "/" + Date.now() + "." + ext;
+
+  msg.innerText = "Uploading...";
+  const up = await db.storage.from("notes").upload(path, file);
+  if (up.error) {
+    msg.innerText = "Upload failed: " + up.error.message;
+    return;
+  }
+
+  const save = await db.from("notes").insert({
+    username: user.email.split("@")[0],
+    student_name: m.name,
+    school: m.school,
+    class: m.studentClass,
+    file_path: path
+  });
+  if (save.error) {
+    msg.innerText = "Saved the photo but not its details: " + save.error.message;
+    return;
+  }
+
+  msg.innerText = "Note uploaded!";
+  photo.value = "";
+  preview.removeAttribute("src");
+});
+
+document.getElementById("topicBtn").addEventListener("click", async function () {
+  const msg = document.getElementById("topicMsg");
+  const subject = document.getElementById("topicSubject").value;
+  const topic = document.getElementById("topicName").value.trim();
+
+  if (subject === "" || topic === "") {
+    msg.innerText = "Choose a subject and type the topic.";
+    return;
+  }
+
+  const userResult = await db.auth.getUser();
+  const user = userResult.data.user;
+  const m = user.user_metadata;
+
+  msg.innerText = "Sending...";
+  const save = await db.from("topics").insert({
+    username: user.email.split("@")[0],
+    student_name: m.name,
+    school: m.school,
+    class: m.studentClass,
+    subject: subject,
+    topic: topic
+  });
+
+  if (save.error) {
+    msg.innerText = "Could not send: " + save.error.message;
+    return;
+  }
+  msg.innerText = "Topic sent!";
+  document.getElementById("topicName").value = "";
+  loadMyTopics();
+});
+
+async function loadMyTopics() {
+  const box = document.getElementById("myTopics");
+  const result = await db.from("topics")
+    .select("subject, topic")
+    .order("created_at", { ascending: false });
+
+  box.innerHTML = "";
+  if (result.error || !result.data) {
+    return;
+  }
+  for (let i = 0; i < result.data.length; i++) {
+    const p = document.createElement("p");
+    p.textContent = result.data[i].subject + ": " + result.data[i].topic;
+    box.appendChild(p);
+  }
+}
+
+let currentQuiz = null;
+
+async function loadQuizzes() {
+  const list = document.getElementById("quizList");
+  list.textContent = "Loading...";
+  const res = await db.from("quizzes")
+    .select("id, title, questions")
+    .order("created_at", { ascending: false });
+  const done = await db.from("quiz_results")
+    .select("quiz_id, score, total")
+    .order("created_at", { ascending: true });
+
+  list.innerHTML = "";
+  if (res.error) {
+    list.textContent = "Could not load quizzes.";
+    return;
+  }
+  if (res.data.length === 0) {
+    list.textContent = "No quizzes yet. Your teacher will send some soon.";
+    return;
+  }
+
+  const scores = {};
+  if (done.data) {
+    for (let i = 0; i < done.data.length; i++) {
+      scores[done.data[i].quiz_id] =
+        done.data[i].score + " / " + done.data[i].total;
+    }
+  }
+
+  for (let i = 0; i < res.data.length; i++) {
+    const quiz = res.data[i];
+    const p = document.createElement("p");
+    p.textContent = quiz.title;
+    if (scores[quiz.id]) {
+      p.textContent += " (last score: " + scores[quiz.id] + ")";
+    }
+    const b = document.createElement("button");
+    b.textContent = scores[quiz.id] ? "Retake" : "Start";
+    b.addEventListener("click", function () {
+      openQuiz(quiz);
+    });
+    list.appendChild(p);
+    list.appendChild(b);
+  }
+}
+
+function openQuiz(quiz) {
+  currentQuiz = quiz;
+  document.getElementById("quizList").classList.add("hidden");
+  document.getElementById("quizTake").classList.remove("hidden");
+  document.getElementById("quizTitleShow").textContent = quiz.title;
+  document.getElementById("quizScore").textContent = "";
+  document.getElementById("submitQuiz").disabled = false;
+
+  const box = document.getElementById("quizQuestions");
+  box.innerHTML = "";
+  for (let i = 0; i < quiz.questions.length; i++) {
+    const q = quiz.questions[i];
+    const p = document.createElement("p");
+    p.textContent = (i + 1) + ". " + q.q;
+    box.appendChild(p);
+    for (let j = 0; j < q.options.length; j++) {
+      const label = document.createElement("label");
+      label.className = "opt";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "q" + i;
+      radio.value = j;
+      label.appendChild(radio);
+      label.append(" " + String.fromCharCode(65 + j) + ". " + q.options[j]);
+      box.appendChild(label);
+    }
+  }
+}
+
+document.getElementById("submitQuiz").addEventListener("click", async function () {
+  const qs = currentQuiz.questions;
+  let score = 0;
+  for (let i = 0; i < qs.length; i++) {
+    const chosen = document.querySelector("input[name='q" + i + "']:checked");
+    if (chosen && Number(chosen.value) === qs[i].answer) {
+      score++;
+    }
+  }
+  this.disabled = true;
+  document.getElementById("quizScore").textContent =
+    "Score: " + score + " / " + qs.length;
+  await db.from("quiz_results").insert({
+    quiz_id: currentQuiz.id,
+    score: score,
+    total: qs.length
+  });
+});
+
+document.getElementById("backQuiz").addEventListener("click", function () {
+  document.getElementById("quizTake").classList.add("hidden");
+  document.getElementById("quizList").classList.remove("hidden");
+  loadQuizzes();
+});
+
+async function checkSession() {
+  const result = await db.auth.getSession();
+  if (result.data.session) {
+    showWelcome(result.data.session.user);
+    showScreen("home");
+  }
+}
+checkSession();
+  </script>
+</body>
+</html>
