@@ -2,7 +2,7 @@
 <html>
 <head>
   <title>Admin</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
   <link rel="stylesheet" href="style.css">
 <style>
   .group { text-align: left; margin: 10px; padding: 10px;
@@ -10,6 +10,7 @@
   .group img { width: 90px; margin: 4px; border-radius: 6px; }
   textarea { width: 90%; padding: 10px; font-size: 16px; border-radius: 8px; }
   #adminHome button { margin: 5px; }
+  .waBtn { display: inline-block; background: #0a7d2e; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 18px; margin: 5px; }
 </style>
 </head>
 <body>
@@ -334,6 +335,23 @@ async function loadResults() {
 
 document.getElementById("showStudents").addEventListener("click", loadStudents);
 
+let waPhone = "";
+let waName = "";
+
+function updateWaLink() {
+  const note = document.getElementById("msgText").value.trim();
+  const text = "Good day. This is a message from the academy about your child " +
+    waName + ": " + note;
+  document.getElementById("msgLink").href =
+    "https://wa.me/" + waPhone + "?text=" + encodeURIComponent(text);
+}
+
+document.getElementById("msgText").addEventListener("input", updateWaLink);
+
+document.getElementById("msgCancel").addEventListener("click", function () {
+  document.getElementById("msgBox").classList.add("hidden");
+});
+
 async function loadStudents() {
   const box = document.getElementById("adminList");
   box.textContent = "Loading...";
@@ -366,14 +384,14 @@ async function loadStudents() {
       const b = document.createElement("button");
       b.textContent = "💬";
       b.addEventListener("click", function () {
-        const note = prompt("Type your message about " + s.student_name + ":", "");
-        if (!note) {
-          return;
-        }
-        const text = "Good day. This is a message from the academy about your child " +
-          s.student_name + ": " + note;
-        window.open("https://wa.me/" + s.parent_phone +
-          "?text=" + encodeURIComponent(text), "_blank");
+        document.getElementById("msgFor").textContent =
+          "Message to the parent of " + s.student_name;
+        document.getElementById("msgText").value = "";
+        waPhone = s.parent_phone;
+        waName = s.student_name;
+        updateWaLink();
+        document.getElementById("msgBox").classList.remove("hidden");
+        document.getElementById("msgBox").scrollIntoView();
       });
       p.appendChild(b);
       div.appendChild(p);
