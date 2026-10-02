@@ -191,7 +191,7 @@ document.getElementById("goLogin").addEventListener("click", function () {
 function showWelcome(user) {
   const m = user.user_metadata;
   document.getElementById("welcome").innerText =
-    "Welcome, " + m.name + " (" + m.studentClass + ", " + m.school0
+    "Welcome, " + m.name + " (" + m.studentClass + ", " + m.school + ")";
 
   const isJSS = m.studentClass.startsWith("JSS");
   document.getElementById("jssNotes").classList.remove("hidden");
