@@ -1,17 +1,19 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Admin</title>
-  
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ACE Academy Admin</title>
   <link rel="stylesheet" href="style.css">
-<style>
-  .group { text-align: left; margin: 10px; padding: 10px;
-           background: white; border-radius: 10px; }
-  .group img { width: 90px; margin: 4px; border-radius: 6px; }
-  textarea { width: 90%; padding: 10px; font-size: 16px; border-radius: 8px; }
-  #adminHome button { margin: 5px; }
-  .waBtn { display: inline-block; background: #0a7d2e; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-size: 18px; margin: 5px; }
-</style>
+  <style>
+    .group { text-align: left; margin: 10px; padding: 10px;
+             background: white; border-radius: 10px; }
+    .group img { width: 90px; margin: 4px; border-radius: 6px; }
+    textarea { width: 90%; padding: 10px; font-size: 16px; border-radius: 8px; }
+    #adminHome button { margin: 5px; }
+    .waBtn { display: inline-block; background: #0a7d2e; color: white;
+             padding: 10px 20px; border-radius: 8px; text-decoration: none;
+             font-size: 18px; margin: 5px; }
+  </style>
 </head>
 <body>
 
@@ -26,24 +28,33 @@
 </div>
 
 <div id="adminHome" class="screen hidden">
-  <h1>Admin</h1>
+  <h1>ACE Academy Admin</h1>
   <button id="adminLogout">Log out</button>
   <br><br>
   <button id="showNotes">JSS Notes</button>
   <button id="showTopics">SS Topics</button>
   <button id="showResults">Results</button>
   <button id="showStudents">Students</button>
+
   <div id="quizForm" class="group hidden">
-  <h3 id="quizFor"></h3>
-  <input id="quizTitle" placeholder="Quiz title">
-  <br><br>
-  <textarea id="quizJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
-  <br><br>
-  <button id="sendQuiz">Send quiz</button>
-  <button id="cancelQuiz">Cancel</button>
-  <p id="quizMsg"></p>
-</div>
-  
+    <h3 id="quizFor"></h3>
+    <input id="quizTitle" placeholder="Quiz title">
+    <br><br>
+    <textarea id="quizJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
+    <br><br>
+    <button id="sendQuiz">Send quiz</button>
+    <button id="cancelQuiz">Cancel</button>
+    <p id="quizMsg"></p>
+  </div>
+
+  <div id="msgBox" class="group hidden">
+    <h3 id="msgFor"></h3>
+    <textarea id="msgText" rows="4" placeholder="Type your message about the child"></textarea>
+    <br><br>
+    <a id="msgLink" class="waBtn" href="#" target="_blank">Open WhatsApp</a>
+    <button id="msgCancel">Cancel</button>
+  </div>
+
   <div id="adminList"></div>
 </div>
 
@@ -53,6 +64,11 @@
     "https://smgjxokbiielnvgduqty.supabase.co",
     "sb_publishable_T_CKX3uRL-xNfVrFOpHZPQ_eoXCdP6F"
   );
+
+  let quizStudent = null;
+  let quizInfo = {};
+  let waPhone = "";
+  let waName = "";
 
   function showAdmin(on) {
     document.getElementById("adminLogin").classList.toggle("hidden", on);
@@ -94,6 +110,8 @@
 
   document.getElementById("showNotes").addEventListener("click", loadNotes);
   document.getElementById("showTopics").addEventListener("click", loadTopics);
+  document.getElementById("showResults").addEventListener("click", loadResults);
+  document.getElementById("showStudents").addEventListener("click", loadStudents);
 
   function groupBy(rows) {
     const out = {};
@@ -106,6 +124,81 @@
     }
     return out;
   }
+
+  function addQuizButton(parent, row, title) {
+    const b = document.createElement("button");
+    b.textContent = "Create quiz";
+    b.addEventListener("click", function () {
+      quizStudent = row.user_id;
+      quizInfo = {
+        student_name: row.student_name,
+        school: row.school,
+        class: row.class
+      };
+      document.getElementById("quizFor").textContent = "Quiz for " + row.student_name;
+      document.getElementById("quizTitle").value = title;
+      document.getElementById("quizJson").value = "";
+      document.getElementById("quizMsg").textContent = "";
+      document.getElementById("quizForm").classList.remove("hidden");
+      document.getElementById("quizForm").scrollIntoView();
+    });
+    parent.appendChild(b);
+  }
+
+  document.getElementById("cancelQuiz").addEventListener("click", function () {
+    document.getElementById("quizForm").classList.add("hidden");
+  });
+
+  document.getElementById("sendQuiz").addEventListener("click", async function () {
+    const msg = document.getElementById("quizMsg");
+    const title = document.getElementById("quizTitle").value.trim();
+    let text = document.getElementById("quizJson").value.trim();
+
+    const start = text.indexOf("[");
+    const end = text.lastIndexOf("]");
+    if (title === "" || start === -1 || end === -1) {
+      msg.textContent = "Add a title and paste the questions.";
+      return;
+    }
+    text = text.slice(start, end + 1);
+
+    let questions;
+    try {
+      questions = JSON.parse(text);
+    } catch (e) {
+      msg.textContent = "The questions are not in the right format. Ask the AI again.";
+      return;
+    }
+
+    if (!Array.isArray(questions) || questions.length === 0) {
+      msg.textContent = "No questions found.";
+      return;
+    }
+    for (let i = 0; i < questions.length; i++) {
+      const x = questions[i];
+      if (typeof x.q !== "string" || !Array.isArray(x.options) ||
+          x.options.length !== 4 || !Number.isInteger(x.answer) ||
+          x.answer < 0 || x.answer > 3) {
+        msg.textContent = "Question " + (i + 1) + " is not in the right format.";
+        return;
+      }
+    }
+
+    msg.textContent = "Sending...";
+    const res = await db.from("quizzes").insert({
+      student_id: quizStudent,
+      student_name: quizInfo.student_name,
+      school: quizInfo.school,
+      class: quizInfo.class,
+      title: title,
+      questions: questions
+    });
+    if (res.error) {
+      msg.textContent = "Could not send: " + res.error.message;
+      return;
+    }
+    msg.textContent = "Quiz sent! (" + questions.length + " questions)";
+  });
 
   async function loadNotes() {
     const box = document.getElementById("adminList");
@@ -182,223 +275,137 @@
       box.textContent = "No topics yet.";
     }
   }
-  
-  let quizStudent = null;
-  let quizInfo = {};
 
-function addQuizButton(parent, row, title) {
-  const b = document.createElement("button");
-  b.textContent = "Create quiz";
-  b.addEventListener("click", function () {
-    quizStudent = row.user_id;
-    quizInfo = {
-      student_name: row.student_name,
-      school: row.school,
-      class: row.class
-    };
-    document.getElementById("quizFor").textContent = "Quiz for " + row.student_name;
-    document.getElementById("quizTitle").value = title;
-    document.getElementById("quizJson").value = "";
-    document.getElementById("quizMsg").textContent = "";
-    document.getElementById("quizForm").classList.remove("hidden");
-    document.getElementById("quizForm").scrollIntoView();
-  });
-  parent.appendChild(b);
-}
-
-document.getElementById("cancelQuiz").addEventListener("click", function () {
-  document.getElementById("quizForm").classList.add("hidden");
-});
-
-document.getElementById("sendQuiz").addEventListener("click", async function () {
-  const msg = document.getElementById("quizMsg");
-  const title = document.getElementById("quizTitle").value.trim();
-  let text = document.getElementById("quizJson").value.trim();
-
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (title === "" || start === -1 || end === -1) {
-    msg.textContent = "Add a title and paste the questions.";
-    return;
-  }
-  text = text.slice(start, end + 1);
-
-  let questions;
-  try {
-    questions = JSON.parse(text);
-  } catch (e) {
-    msg.textContent = "The questions are not in the right format. Ask the AI again.";
-    return;
-  }
-
-  if (!Array.isArray(questions) || questions.length === 0) {
-    msg.textContent = "No questions found.";
-    return;
-  }
-  for (let i = 0; i < questions.length; i++) {
-    const x = questions[i];
-    if (typeof x.q !== "string" || !Array.isArray(x.options) ||
-        x.options.length !== 4 || !Number.isInteger(x.answer) ||
-        x.answer < 0 || x.answer > 3) {
-      msg.textContent = "Question " + (i + 1) + " is not in the right format.";
+  async function loadResults() {
+    const box = document.getElementById("adminList");
+    box.textContent = "Loading...";
+    const res = await db.from("quiz_results")
+      .select("score, total, created_at, student_id, quizzes(title, student_name, school, class)")
+      .order("created_at", { ascending: true });
+    box.innerHTML = "";
+    if (res.error) {
+      box.textContent = res.error.message;
       return;
     }
-  }
-
-  msg.textContent = "Sending...";
-  const res = await db.from("quizzes").insert({
-    student_id: quizStudent,
-    student_name: quizInfo.student_name,
-    school: quizInfo.school,
-    class: quizInfo.class,
-    title: title,
-    questions: questions
-  });
-  
-  if (res.error) {
-    msg.textContent = "Could not send: " + res.error.message;
-    return;
-  }
-  msg.textContent = "Quiz sent! (" + questions.length + " questions)";
-});
-
-document.getElementById("showResults").addEventListener("click", loadResults);
-
-async function loadResults() {
-  const box = document.getElementById("adminList");
-  box.textContent = "Loading...";
-  const res = await db.from("quiz_results")
-    .select("score, total, created_at, student_id, quizzes(title, student_name, school, class)")
-    .order("created_at", { ascending: true });
-  box.innerHTML = "";
-  if (res.error) {
-    box.textContent = res.error.message;
-    return;
-  }
-  if (res.data.length === 0) {
-    box.textContent = "No results yet.";
-    return;
-  }
-
-  const groups = {};
-  for (let i = 0; i < res.data.length; i++) {
-    const r = res.data[i];
-    const qz = r.quizzes || {};
-    const key = (qz.school || "Unknown school") + " - " + (qz.class || "");
-    const name = qz.student_name || r.student_id.slice(0, 8);
-    if (!groups[key]) {
-      groups[key] = {};
+    if (res.data.length === 0) {
+      box.textContent = "No results yet.";
+      return;
     }
-    if (!groups[key][r.student_id]) {
-      groups[key][r.student_id] = { name: name, rows: [] };
-    }
-    groups[key][r.student_id].rows.push({
-      title: qz.title || "Quiz",
-      score: r.score,
-      total: r.total,
-      date: new Date(r.created_at).toLocaleDateString()
-    });
-  }
 
-  const keys = Object.keys(groups).sort();
-  for (let k = 0; k < keys.length; k++) {
-    const div = document.createElement("div");
-    div.className = "group";
-    const h = document.createElement("h3");
-    h.textContent = keys[k];
-    div.appendChild(h);
-
-    const ids = Object.keys(groups[keys[k]]);
-    for (let s = 0; s < ids.length; s++) {
-      const st = groups[keys[k]][ids[s]];
-      let sum = 0;
-      for (let i = 0; i < st.rows.length; i++) {
-        sum += st.rows[i].score / st.rows[i].total * 100;
+    const groups = {};
+    for (let i = 0; i < res.data.length; i++) {
+      const r = res.data[i];
+      const qz = r.quizzes || {};
+      const key = (qz.school || "Unknown school") + " - " + (qz.class || "");
+      const name = qz.student_name || r.student_id.slice(0, 8);
+      if (!groups[key]) {
+        groups[key] = {};
       }
-      const avg = Math.round(sum / st.rows.length);
+      if (!groups[key][r.student_id]) {
+        groups[key][r.student_id] = { name: name, rows: [] };
+      }
+      groups[key][r.student_id].rows.push({
+        title: qz.title || "Quiz",
+        score: r.score,
+        total: r.total,
+        date: new Date(r.created_at).toLocaleDateString()
+      });
+    }
 
-      const head = document.createElement("h4");
-      head.textContent = st.name + " - average " + avg + "% (" +
-        st.rows.length + " attempts)";
-      div.appendChild(head);
+    const keys = Object.keys(groups).sort();
+    for (let k = 0; k < keys.length; k++) {
+      const div = document.createElement("div");
+      div.className = "group";
+      const h = document.createElement("h3");
+      h.textContent = keys[k];
+      div.appendChild(h);
 
-      for (let i = 0; i < st.rows.length; i++) {
+      const ids = Object.keys(groups[keys[k]]);
+      for (let s = 0; s < ids.length; s++) {
+        const st = groups[keys[k]][ids[s]];
+        let sum = 0;
+        for (let i = 0; i < st.rows.length; i++) {
+          sum += st.rows[i].score / st.rows[i].total * 100;
+        }
+        const avg = Math.round(sum / st.rows.length);
+
+        const head = document.createElement("h4");
+        head.textContent = st.name + " - average " + avg + "% (" +
+          st.rows.length + " attempts)";
+        div.appendChild(head);
+
+        for (let i = 0; i < st.rows.length; i++) {
+          const p = document.createElement("p");
+          p.textContent = st.rows[i].date + ": " + st.rows[i].title +
+            " - " + st.rows[i].score + "/" + st.rows[i].total;
+          div.appendChild(p);
+        }
+      }
+      box.appendChild(div);
+    }
+  }
+
+  function updateWaLink() {
+    const note = document.getElementById("msgText").value.trim();
+    const text = "Good day. This is a message from the academy about your child " +
+      waName + ": " + note;
+    document.getElementById("msgLink").href =
+      "https://wa.me/" + waPhone + "?text=" + encodeURIComponent(text);
+  }
+
+  document.getElementById("msgText").addEventListener("input", updateWaLink);
+
+  document.getElementById("msgCancel").addEventListener("click", function () {
+    document.getElementById("msgBox").classList.add("hidden");
+  });
+
+  async function loadStudents() {
+    const box = document.getElementById("adminList");
+    box.textContent = "Loading...";
+    const res = await db.from("profiles").select("*").order("student_name");
+    box.innerHTML = "";
+    if (res.error) {
+      box.textContent = res.error.message;
+      return;
+    }
+    if (res.data.length === 0) {
+      box.textContent = "No students yet.";
+      return;
+    }
+
+    const groups = groupBy(res.data);
+    const keys = Object.keys(groups).sort();
+    for (let k = 0; k < keys.length; k++) {
+      const div = document.createElement("div");
+      div.className = "group";
+      const h = document.createElement("h3");
+      h.textContent = keys[k];
+      div.appendChild(h);
+
+      const rows = groups[keys[k]];
+      for (let i = 0; i < rows.length; i++) {
+        const s = rows[i];
         const p = document.createElement("p");
-        p.textContent = st.rows[i].date + ": " + st.rows[i].title +
-          " - " + st.rows[i].score + "/" + st.rows[i].total;
+        p.textContent = s.student_name + " (" + s.username + ") ";
+
+        const b = document.createElement("button");
+        b.textContent = "💬";
+        b.addEventListener("click", function () {
+          document.getElementById("msgFor").textContent =
+            "Message to the parent of " + s.student_name;
+          document.getElementById("msgText").value = "";
+          waPhone = s.parent_phone;
+          waName = s.student_name;
+          updateWaLink();
+          document.getElementById("msgBox").classList.remove("hidden");
+          document.getElementById("msgBox").scrollIntoView();
+        });
+        p.appendChild(b);
         div.appendChild(p);
       }
+      box.appendChild(div);
     }
-    box.appendChild(div);
   }
-}
-
-document.getElementById("showStudents").addEventListener("click", loadStudents);
-
-let waPhone = "";
-let waName = "";
-
-function updateWaLink() {
-  const note = document.getElementById("msgText").value.trim();
-  const text = "Good day. This is a message from the academy about your child " +
-    waName + ": " + note;
-  document.getElementById("msgLink").href =
-    "https://wa.me/" + waPhone + "?text=" + encodeURIComponent(text);
-}
-
-document.getElementById("msgText").addEventListener("input", updateWaLink);
-
-document.getElementById("msgCancel").addEventListener("click", function () {
-  document.getElementById("msgBox").classList.add("hidden");
-});
-
-async function loadStudents() {
-  const box = document.getElementById("adminList");
-  box.textContent = "Loading...";
-  const res = await db.from("profiles").select("*").order("student_name");
-  box.innerHTML = "";
-  if (res.error) {
-    box.textContent = res.error.message;
-    return;
-  }
-  if (res.data.length === 0) {
-    box.textContent = "No students yet.";
-    return;
-  }
-
-  const groups = groupBy(res.data);
-  const keys = Object.keys(groups).sort();
-  for (let k = 0; k < keys.length; k++) {
-    const div = document.createElement("div");
-    div.className = "group";
-    const h = document.createElement("h3");
-    h.textContent = keys[k];
-    div.appendChild(h);
-
-    const rows = groups[keys[k]];
-    for (let i = 0; i < rows.length; i++) {
-      const s = rows[i];
-      const p = document.createElement("p");
-      p.textContent = s.student_name + " (" + s.username + ") ";
-
-      const b = document.createElement("button");
-      b.textContent = "💬";
-      b.addEventListener("click", function () {
-        document.getElementById("msgFor").textContent =
-          "Message to the parent of " + s.student_name;
-        document.getElementById("msgText").value = "";
-        waPhone = s.parent_phone;
-        waName = s.student_name;
-        updateWaLink();
-        document.getElementById("msgBox").classList.remove("hidden");
-        document.getElementById("msgBox").scrollIntoView();
-      });
-      p.appendChild(b);
-      div.appendChild(p);
-    }
-    box.appendChild(div);
-  }
-} 
 
   async function checkAdminSession() {
     const s = await db.auth.getSession();
