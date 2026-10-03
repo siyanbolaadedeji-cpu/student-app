@@ -319,13 +319,38 @@ for (let i = 0; i < menuButtons.length; i++) {
 }
 let timetable = JSON.parse(localStorage.getItem("timetable")) || [];
 
+function alarmLink(slot) {
+  const parts = slot.time.split(":");
+  const label = encodeURIComponent("Study " + slot.subject + " (" + slot.day + ")");
+  return "intent:#Intent;action=android.intent.action.SET_ALARM;" +
+    "i.android.intent.extra.alarm.HOUR=" + Number(parts[0]) + ";" +
+    "i.android.intent.extra.alarm.MINUTES=" + Number(parts[1]) + ";" +
+    "S.android.intent.extra.alarm.MESSAGE=" + label + ";end";
+}
+
 function showTimetable() {
   const ttBox = document.getElementById("ttList");
   ttBox.innerHTML = "";
   for (let i = 0; i < timetable.length; i++) {
-    ttBox.innerHTML += "<p>" + timetable[i].day + ", " +
-      timetable[i].time + " - " + timetable[i].subject +
-      " <button class='delBtn' onclick='deleteSlot(" + i + ")'>X</button></p>";
+    const p = document.createElement("p");
+    p.textContent = timetable[i].day + ", " + timetable[i].time +
+      " - " + timetable[i].subject + " ";
+
+    const a = document.createElement("a");
+    a.href = alarmLink(timetable[i]);
+    a.className = "alarmBtn";
+    a.textContent = "⏰ Set alarm";
+    p.appendChild(a);
+
+    const del = document.createElement("button");
+    del.className = "delBtn";
+    del.textContent = "X";
+    del.addEventListener("click", function () {
+      deleteSlot(i);
+    });
+    p.appendChild(del);
+
+    ttBox.appendChild(p);
   }
 }
 
