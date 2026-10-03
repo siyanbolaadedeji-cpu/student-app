@@ -380,11 +380,31 @@ function playBeep() {
   }
 }
 
-function showReminder(subject) {
+let alarmTimer = null;
+let ringCount = 0;
+
+function stopAlarm() {
+  clearInterval(alarmTimer);
+  alarmTimer = null;
+  document.getElementById("reminderBox").classList.add("hidden");
+  if (navigator.vibrate) {
+    navigator.vibrate(0);
+  }
+}
+
+function ring() {
+  ringCount++;
+  if (ringCount > 75) {
+    stopAlarm();
+    return;
+  }
   playBeep();
   if (navigator.vibrate) {
     navigator.vibrate([500, 300, 500]);
   }
+}
+
+function showReminder(subject) {
   try {
     if (Notification.permission === "granted") {
       new Notification("Time to study!", { body: subject });
@@ -393,6 +413,10 @@ function showReminder(subject) {
   document.getElementById("reminderText").innerText =
     "It's time to study " + subject;
   document.getElementById("reminderBox").classList.remove("hidden");
+  clearInterval(alarmTimer);
+  ringCount = 0;
+  ring();
+  alarmTimer = setInterval(ring, 4000);
 }
 
 function checkAlarms() {
@@ -413,9 +437,7 @@ function checkAlarms() {
 
 setInterval(checkAlarms, 10000);
 
-document.getElementById("dismissBtn").addEventListener("click", function () {
-  document.getElementById("reminderBox").classList.add("hidden");
-});
+document.getElementById("dismissBtn").addEventListener("click", stopAlarm);
 
 document.getElementById("addTt").addEventListener("click", function () {
   if ("Notification" in window && Notification.permission === "default") {
