@@ -341,7 +341,12 @@ function showTimetable() {
     a.className = "alarmBtn";
     a.textContent = "⏰ Set alarm";
     p.appendChild(a);
-
+const al = document.createElement("a");
+    al.href = alarmLink(timetable[i]);
+    al.className = "alarmBtn";
+    al.textContent = "⏰ Set alarm";
+    p.appendChild(al);
+    
     const del = document.createElement("button");
     del.className = "delBtn";
     del.textContent = "X";
