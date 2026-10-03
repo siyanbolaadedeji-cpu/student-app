@@ -327,7 +327,36 @@ function alarmLink(slot) {
     "i.android.intent.extra.alarm.MINUTES=" + Number(parts[1]) + ";" +
     "S.android.intent.extra.alarm.MESSAGE=" + label + ";end";
 }
+function calendarLink(slot) {
+  const names = ["Sunday", "Monday", "Tuesday", "Wednesday",
+    "Thursday", "Friday", "Saturday"];
+  const codes = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+  const target = names.indexOf(slot.day);
+  const parts = slot.time.split(":");
+  const now = new Date();
+  const d = new Date();
+  d.setHours(Number(parts[0]), Number(parts[1]), 0, 0);
 
+  let add = (target - now.getDay() + 7) % 7;
+  if (add === 0 && d <= now) {
+    add = 7;
+  }
+  d.setDate(d.getDate() + add);
+  const end = new Date(d.getTime() + 30 * 60000);
+
+  function fmt(x) {
+    return x.getFullYear() +
+      String(x.getMonth() + 1).padStart(2, "0") +
+      String(x.getDate()).padStart(2, "0") + "T" +
+      String(x.getHours()).padStart(2, "0") +
+      String(x.getMinutes()).padStart(2, "0") + "00";
+  }
+
+  return "https://calendar.google.com/calendar/render?action=TEMPLATE" +
+    "&text=" + encodeURIComponent("Study " + slot.subject) +
+    "&dates=" + fmt(d) + "/" + fmt(end) +
+    "&recur=" + encodeURIComponent("RRULE:FREQ=WEEKLY;BYDAY=" + codes[target]);
+}
 function showTimetable() {
   const ttBox = document.getElementById("ttList");
   ttBox.innerHTML = "";
@@ -337,16 +366,12 @@ function showTimetable() {
       " - " + timetable[i].subject + " ";
 
     const a = document.createElement("a");
-    a.href = alarmLink(timetable[i]);
+    a.href = calendarLink(timetable[i]);
+    a.target = "_blank";
     a.className = "alarmBtn";
-    a.textContent = "⏰ Set alarm";
+    a.textContent = "📅 Add to calendar";
     p.appendChild(a);
-const al = document.createElement("a");
-    al.href = alarmLink(timetable[i]);
-    al.className = "alarmBtn";
-    al.textContent = "⏰ Set alarm";
-    p.appendChild(al);
-    
+
     const del = document.createElement("button");
     del.className = "delBtn";
     del.textContent = "X";
@@ -358,7 +383,6 @@ const al = document.createElement("a");
     ttBox.appendChild(p);
   }
 }
-
 function deleteSlot(i) {
   timetable.splice(i, 1);
   localStorage.setItem("timetable", JSON.stringify(timetable));
