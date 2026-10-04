@@ -552,6 +552,11 @@ document.getElementById("uploadBtn").addEventListener("click", async function ()
     file_path: path,
     kind: document.getElementById("uploadKind").value,
     description: document.getElementById("uploadDesc").value.trim()
+  });
+  if (save.error) {
+    msg.innerText = "Saved the photo but not its details: " + save.error.message;
+    return;
+  }
 
   msg.innerText = "Note uploaded!";
   photo.value = "";
