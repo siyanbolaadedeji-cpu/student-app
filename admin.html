@@ -13,6 +13,8 @@
     .waBtn { display: inline-block; background: #0a7d2e; color: white;
              padding: 10px 20px; border-radius: 8px; text-decoration: none;
              font-size: 18px; margin: 5px; }
+             summary { cursor: pointer; font-weight: bold; padding: 8px 0; }
+    .student { margin-left: 8px; border-top: 1px solid #ddd; }
   </style>
 </head>
 <body>
@@ -202,49 +204,81 @@
   });
 
   async function loadNotes() {
-    const box = document.getElementById("adminList");
-    box.textContent = "Loading...";
-    const res = await db.from("notes").select("*")
-      .order("created_at", { ascending: false });
-    box.innerHTML = "";
-    if (res.error) {
-      box.textContent = res.error.message;
-      return;
-    }
-    const groups = groupBy(res.data);
-    const keys = Object.keys(groups).sort();
-    for (let k = 0; k < keys.length; k++) {
-      const div = document.createElement("div");
-      div.className = "group";
-      const h = document.createElement("h3");
-      h.textContent = keys[k];
-      div.appendChild(h);
-      const rows = groups[keys[k]];
-      for (let i = 0; i < rows.length; i++) {
-        const p = document.createElement("p");
-p.textContent = rows[i].student_name + " (" + rows[i].username + ") - " +
-  (rows[i].kind || "Notes") +
-  (rows[i].description ? ": " + rows[i].description : "");
-        div.appendChild(p);
-        addQuizButton(div, rows[i], "Quiz from notes");
-        const signed = await db.storage.from("notes")
-          .createSignedUrl(rows[i].file_path, 3600);
-        if (signed.data) {
-          const a = document.createElement("a");
-          a.href = signed.data.signedUrl;
-          a.target = "_blank";
-          const img = document.createElement("img");
-          img.src = signed.data.signedUrl;
-          a.appendChild(img);
-          div.appendChild(a);
-        }
-      }
-      box.appendChild(div);
-    }
-    if (keys.length === 0) {
-      box.textContent = "No notes yet.";
-    }
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("notes").select("*")
+    .order("created_at", { ascending: false });
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
   }
+  if (res.data.length === 0) {
+    box.textContent = "No uploads yet.";
+    return;
+  }
+
+  const groups = groupBy(res.data);
+  const keys = Object.keys(groups).sort();
+  for (let k = 0; k < keys.length; k++) {
+    const rows = groups[keys[k]];
+    const students = {};
+    for (let i = 0; i < rows.length; i++) {
+      const id = rows[i].user_id;
+      if (!students[id]) {
+        students[id] = [];
+      }
+      students[id].push(rows[i]);
+    }
+    const ids = Object.keys(students);
+
+    const classBox = document.createElement("details");
+    classBox.className = "group";
+    const classHead = document.createElement("summary");
+    classHead.textContent = keys[k] + " (" + ids.length + " students, " +
+      rows.length + " uploads)";
+    classBox.appendChild(classHead);
+
+    for (let s = 0; s < ids.length; s++) {
+      const list = students[ids[s]];
+      const stBox = document.createElement("details");
+      stBox.className = "student";
+      const stHead = document.createElement("summary");
+      stHead.textContent = list[0].student_name + " (" + list[0].username +
+        ") - " + list.length + " uploads";
+      stBox.appendChild(stHead);
+
+      let loaded = false;
+      stBox.addEventListener("toggle", async function () {
+        if (!stBox.open || loaded) {
+          return;
+        }
+        loaded = true;
+        for (let i = 0; i < list.length; i++) {
+          const p = document.createElement("p");
+          p.textContent = new Date(list[i].created_at).toLocaleDateString() +
+            " - " + (list[i].kind || "Notes") +
+            (list[i].description ? ": " + list[i].description : "");
+          stBox.appendChild(p);
+          addQuizButton(stBox, list[i], "Quiz from notes");
+          const signed = await db.storage.from("notes")
+            .createSignedUrl(list[i].file_path, 3600);
+          if (signed.data) {
+            const a = document.createElement("a");
+            a.href = signed.data.signedUrl;
+            a.target = "_blank";
+            const img = document.createElement("img");
+            img.src = signed.data.signedUrl;
+            a.appendChild(img);
+            stBox.appendChild(a);
+          }
+        }
+      });
+      classBox.appendChild(stBox);
+    }
+    box.appendChild(classBox);
+  }
+}
 
   async function loadTopics() {
     const box = document.getElementById("adminList");
