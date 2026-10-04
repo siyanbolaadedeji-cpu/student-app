@@ -56,7 +56,8 @@
     <a id="msgLink" class="waBtn" href="#" target="_blank">Open WhatsApp</a>
     <button id="msgCancel">Cancel</button>
   </div>
-
+<input id="searchBox" placeholder="Search student name">
+  <br><br>
   <div id="adminList"></div>
 </div>
 
@@ -242,7 +243,8 @@
     for (let s = 0; s < ids.length; s++) {
       const list = students[ids[s]];
       const stBox = document.createElement("details");
-      stBox.className = "student";
+      stBox.className = "student item";
+      stBox.dataset.name = (list[0].student_name + " " + list[0].username).toLowerCase();
       const stHead = document.createElement("summary");
       stHead.textContent = list[0].student_name + " (" + list[0].username +
         ") - " + list.length + " uploads";
@@ -281,37 +283,63 @@
 }
 
   async function loadTopics() {
-    const box = document.getElementById("adminList");
-    box.textContent = "Loading...";
-    const res = await db.from("topics").select("*")
-      .order("created_at", { ascending: false });
-    box.innerHTML = "";
-    if (res.error) {
-      box.textContent = res.error.message;
-      return;
-    }
-    const groups = groupBy(res.data);
-    const keys = Object.keys(groups).sort();
-    for (let k = 0; k < keys.length; k++) {
-      const div = document.createElement("div");
-      div.className = "group";
-      const h = document.createElement("h3");
-      h.textContent = keys[k];
-      div.appendChild(h);
-      const rows = groups[keys[k]];
-      for (let i = 0; i < rows.length; i++) {
-        const p = document.createElement("p");
-        p.textContent = rows[i].student_name + ": " +
-          rows[i].subject + " - " + rows[i].topic;
-        div.appendChild(p);
-        addQuizButton(div, rows[i], rows[i].subject + ": " + rows[i].topic);
-      }
-      box.appendChild(div);
-    }
-    if (keys.length === 0) {
-      box.textContent = "No topics yet.";
-    }
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("topics").select("*")
+    .order("created_at", { ascending: false });
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
   }
+  if (res.data.length === 0) {
+    box.textContent = "No topics yet.";
+    return;
+  }
+
+  const groups = groupBy(res.data);
+  const keys = Object.keys(groups).sort();
+  for (let k = 0; k < keys.length; k++) {
+    const rows = groups[keys[k]];
+    const students = {};
+    for (let i = 0; i < rows.length; i++) {
+      const id = rows[i].user_id;
+      if (!students[id]) {
+        students[id] = [];
+      }
+      students[id].push(rows[i]);
+    }
+    const ids = Object.keys(students);
+
+    const classBox = document.createElement("details");
+    classBox.className = "group";
+    const classHead = document.createElement("summary");
+    classHead.textContent = keys[k] + " (" + ids.length + " students, " +
+      rows.length + " topics)";
+    classBox.appendChild(classHead);
+
+    for (let s = 0; s < ids.length; s++) {
+      const list = students[ids[s]];
+      const stBox = document.createElement("details");
+      stBox.className = "student item";
+      stBox.dataset.name = (list[0].student_name + " " + list[0].username).toLowerCase();
+      const stHead = document.createElement("summary");
+      stHead.textContent = list[0].student_name + " (" + list[0].username +
+        ") - " + list.length + " topics";
+      stBox.appendChild(stHead);
+
+      for (let i = 0; i < list.length; i++) {
+        const p = document.createElement("p");
+        p.textContent = new Date(list[i].created_at).toLocaleDateString() +
+          " - " + list[i].subject + ": " + list[i].topic;
+        stBox.appendChild(p);
+        addQuizButton(stBox, list[i], list[i].subject + ": " + list[i].topic);
+      }
+      classBox.appendChild(stBox);
+    }
+    box.appendChild(classBox);
+  }
+}
 
   async function loadResults() {
     const box = document.getElementById("adminList");
@@ -424,6 +452,8 @@
         const s = rows[i];
         const p = document.createElement("p");
         p.textContent = s.student_name + " (" + s.username + ") ";
+        p.className = "item";
+        p.dataset.name = (s.student_name + " " + s.username).toLowerCase();
 
         const b = document.createElement("button");
         b.textContent = "💬";
@@ -443,7 +473,37 @@
       box.appendChild(div);
     }
   }
+function filterList() {
+  const q = document.getElementById("searchBox").value.trim().toLowerCase();
+  const groups = document.querySelectorAll("#adminList .group");
+  for (let g = 0; g < groups.length; g++) {
+    const items = groups[g].querySelectorAll(".item");
+    if (items.length === 0) {
+      continue;
+    }
+    let shown = 0;
+    for (let i = 0; i < items.length; i++) {
+      const match = q === "" || items[i].dataset.name.includes(q);
+      items[i].classList.toggle("hidden", !match);
+      if (match) {
+        shown++;
+      }
+    }
+    groups[g].classList.toggle("hidden", shown === 0);
+    if (groups[g].tagName === "DETAILS" && q !== "" && shown > 0) {
+      groups[g].open = true;
+    }
+  }
+}
 
+document.getElementById("searchBox").addEventListener("input", filterList);
+
+const menuBtns = ["showNotes", "showTopics", "showResults", "showStudents"];
+for (let i = 0; i < menuBtns.length; i++) {
+  document.getElementById(menuBtns[i]).addEventListener("click", function () {
+    document.getElementById("searchBox").value = "";
+  });
+}
   async function checkAdminSession() {
     const s = await db.auth.getSession();
     if (s.data.session) {
