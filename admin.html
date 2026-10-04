@@ -31,7 +31,7 @@
   <h1>ACE Academy Admin</h1>
   <button id="adminLogout">Log out</button>
   <br><br>
-  <button id="showNotes">Uploads</button>
+  rows[i].student_name + "<button id="showNotes">Uploads</button>
   <button id="showTopics">SS Topics</button>
   <button id="showResults">Results</button>
   <button id="showStudents">Students</button>
@@ -85,7 +85,8 @@
       return;
     }
     showAdmin(true);
-    loadNotes();
+    document.getElementById("adminList").textContent =
+      "Tap Uploads, SS Topics, Results or Students to see them.";
   }
 
   document.getElementById("adminLoginBtn").addEventListener("click", async function () {
