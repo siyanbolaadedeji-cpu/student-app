@@ -56,7 +56,7 @@
     <a id="msgLink" class="waBtn" href="#" target="_blank">Open WhatsApp</a>
     <button id="msgCancel">Cancel</button>
   </div>
-<input id="searchBox" placeholder="Search student name">
+<input id="searchBox" class="hidden" placeholder="Search student name">
   <br><br>
   <div id="adminList"></div>
 </div>
@@ -91,7 +91,7 @@
     document.getElementById("adminList").textContent =
       "Tap Uploads, SS Topics, Results or Students to see them.";
   }
-
+document.getElementById("searchBox").classList.add("hidden");
   document.getElementById("adminLoginBtn").addEventListener("click", async function () {
     const msg = document.getElementById("adminMsg");
     msg.innerText = "Logging in...";
@@ -257,14 +257,39 @@
         }
         loaded = true;
         for (let i = 0; i < list.length; i++) {
+          const row = list[i];
+          const wrap = document.createElement("div");
+
           const p = document.createElement("p");
-          p.textContent = new Date(list[i].created_at).toLocaleDateString() +
-            " - " + (list[i].kind || "Notes") +
-            (list[i].description ? ": " + list[i].description : "");
-          stBox.appendChild(p);
-          addQuizButton(stBox, list[i], "Quiz from notes");
+          p.textContent = new Date(row.created_at).toLocaleDateString() +
+            " - " + (row.kind || "Notes") +
+            (row.description ? ": " + row.description : "");
+          wrap.appendChild(p);
+          addQuizButton(wrap, row, "Quiz from notes");
+
+          const del = document.createElement("button");
+          del.className = "delBtn";
+          del.textContent = "Delete";
+          del.addEventListener("click", async function () {
+            if (!confirm("Delete this upload permanently?")) {
+              return;
+            }
+            const r1 = await db.storage.from("notes").remove([row.file_path]);
+            if (r1.error || !r1.data || r1.data.length === 0) {
+              alert("The photo could not be deleted.");
+              return;
+            }
+            const r2 = await db.from("notes").delete().eq("id", row.id).select();
+            if (r2.error || !r2.data || r2.data.length === 0) {
+              alert("The record could not be deleted.");
+              return;
+            }
+            wrap.remove();
+          });
+          wrap.appendChild(del);
+
           const signed = await db.storage.from("notes")
-            .createSignedUrl(list[i].file_path, 3600);
+            .createSignedUrl(row.file_path, 3600);
           if (signed.data) {
             const a = document.createElement("a");
             a.href = signed.data.signedUrl;
@@ -272,8 +297,9 @@
             const img = document.createElement("img");
             img.src = signed.data.signedUrl;
             a.appendChild(img);
-            stBox.appendChild(a);
+            wrap.appendChild(a);
           }
+          stBox.appendChild(wrap);
         }
       });
       classBox.appendChild(stBox);
@@ -501,7 +527,9 @@ document.getElementById("searchBox").addEventListener("input", filterList);
 const menuBtns = ["showNotes", "showTopics", "showResults", "showStudents"];
 for (let i = 0; i < menuBtns.length; i++) {
   document.getElementById(menuBtns[i]).addEventListener("click", function () {
-    document.getElementById("searchBox").value = "";
+    const box = document.getElementById("searchBox");
+    box.value = "";
+    box.classList.toggle("hidden", menuBtns[i] === "showResults");
   });
 }
   async function checkAdminSession() {
