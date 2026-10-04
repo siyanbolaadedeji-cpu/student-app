@@ -355,11 +355,32 @@ document.getElementById("searchBox").classList.add("hidden");
       stBox.appendChild(stHead);
 
       for (let i = 0; i < list.length; i++) {
+        const row = list[i];
+        const wrap = document.createElement("div");
+
         const p = document.createElement("p");
-        p.textContent = new Date(list[i].created_at).toLocaleDateString() +
-          " - " + list[i].subject + ": " + list[i].topic;
-        stBox.appendChild(p);
-        addQuizButton(stBox, list[i], list[i].subject + ": " + list[i].topic);
+        p.textContent = new Date(row.created_at).toLocaleDateString() +
+          " - " + row.subject + ": " + row.topic;
+        wrap.appendChild(p);
+        addQuizButton(wrap, row, row.subject + ": " + row.topic);
+
+        const del = document.createElement("button");
+        del.className = "delBtn";
+        del.textContent = "Delete";
+        del.addEventListener("click", async function () {
+          if (!confirm("Delete this topic permanently?")) {
+            return;
+          }
+          const r = await db.from("topics").delete().eq("id", row.id).select();
+          if (r.error || !r.data || r.data.length === 0) {
+            alert("The topic could not be deleted.");
+            return;
+          }
+          wrap.remove();
+        });
+        wrap.appendChild(del);
+
+        stBox.appendChild(wrap);
       }
       classBox.appendChild(stBox);
     }
