@@ -93,6 +93,14 @@
     <h2>Upload a photo</h2>
     <input type="file" accept="image/*" id="photo">
     <br><br>
+    <select id="uploadKind">
+  <option>Notes</option>
+  <option>Letter</option>
+  <option>Workings</option>
+</select>
+<br><br>
+<input id="uploadDesc" placeholder="Short note (optional)">
+<br><br>
     <img id="preview" width="200">
     <br><br>
     <button id="uploadBtn">Upload note</button>
@@ -541,15 +549,13 @@ document.getElementById("uploadBtn").addEventListener("click", async function ()
     student_name: m.name,
     school: m.school,
     class: m.studentClass,
-    file_path: path
-  });
-  if (save.error) {
-    msg.innerText = "Saved the photo but not its details: " + save.error.message;
-    return;
-  }
+    file_path: path,
+    kind: document.getElementById("uploadKind").value,
+    description: document.getElementById("uploadDesc").value.trim()
 
   msg.innerText = "Note uploaded!";
   photo.value = "";
+  document.getElementById("uploadDesc").value = "";
   preview.removeAttribute("src");
 });
 

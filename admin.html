@@ -31,7 +31,7 @@
   <h1>ACE Academy Admin</h1>
   <button id="adminLogout">Log out</button>
   <br><br>
-  <button id="showNotes">Uploads</button>
+  rows[i].student_name + "<button id="showNotes">Uploads</button>
   <button id="showTopics">SS Topics</button>
   <button id="showResults">Results</button>
   <button id="showStudents">Students</button>
@@ -221,7 +221,9 @@
       const rows = groups[keys[k]];
       for (let i = 0; i < rows.length; i++) {
         const p = document.createElement("p");
-        p.textContent = rows[i].student_name + " (" + rows[i].username + ")";
+p.textContent = rows[i].student_name + " (" + rows[i].username + ") - " +
+  (rows[i].kind || "Notes") +
+  (rows[i].description ? ": " + rows[i].description : "");
         div.appendChild(p);
         addQuizButton(div, rows[i], "Quiz from notes");
         const signed = await db.storage.from("notes")
