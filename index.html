@@ -734,6 +734,11 @@ function openQuiz(quiz) {
     title: quiz.title,
     questions: shuffle(quiz.questions.slice())
   };
+  const oldMissed = document.getElementById("missedBox");
+  if (oldMissed) {
+    oldMissed.remove();
+  }
+  
   document.getElementById("quizList").classList.add("hidden");
   document.getElementById("quizTake").classList.remove("hidden");
   document.getElementById("quizTitleShow").textContent = quiz.title;
@@ -819,6 +824,29 @@ document.getElementById("submitQuiz").addEventListener("click", async function (
     "Score: " + score + " / " + qs.length + " (" + pct + "%) " +
     (passed ? "- Well done, you passed! ✅"
             : "- Below " + PASS_MARK + "%. Go back and retake this quiz.");
+            const missed = [];
+  for (let i = 0; i < qs.length; i++) {
+    if (!right[i]) {
+      missed.push(i);
+    }
+  }
+  if (missed.length > 0 && showAnswers) {
+    const mb = document.createElement("div");
+    mb.id = "missedBox";
+    mb.className = "missed";
+    const h = document.createElement("h4");
+    h.textContent = "Questions you missed (" + missed.length + ")";
+    mb.appendChild(h);
+    for (let m = 0; m < missed.length; m++) {
+      const i = missed[m];
+      const p = document.createElement("p");
+      p.textContent = (i + 1) + ". " + qs[i].q + " - Correct answer: " +
+        String.fromCharCode(65 + qs[i].answer) + ". " +
+        qs[i].options[qs[i].answer];
+      mb.appendChild(p);
+    }
+    document.getElementById("quizScore").after(mb);
+  }
 
   await db.from("quiz_results").insert({
     quiz_id: currentQuiz.id,
