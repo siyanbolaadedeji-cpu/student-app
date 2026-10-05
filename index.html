@@ -209,6 +209,9 @@ function makeEmail(username) {
   const screens = document.querySelectorAll(".screen");
   for (let i = 0; i < screens.length; i++) {
     screens[i].classList.add("hidden");
+    if (id === "register" || id === "loginPage" || id === "jambRegister") {
+    history.pushState({ screen: id }, "");
+  }
   }
   document.getElementById(id).classList.remove("hidden");
 }
@@ -993,6 +996,16 @@ async function loadJamb() {
   body.appendChild(note);
   addLine(body, "After you send your receipt, you will be approved as soon as possible. Tap \"Check my access\" to see.");
 }
+window.addEventListener("popstate", function () {
+  const ids = ["register", "loginPage", "jambRegister"];
+  for (let i = 0; i < ids.length; i++) {
+    const el = document.getElementById(ids[i]);
+    if (!el.classList.contains("hidden")) {
+      showScreen("welcomePage");
+      return;
+    }
+  }
+});
 async function checkSession() {
   const result = await db.auth.getSession();
   if (result.data.session) {
