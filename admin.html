@@ -15,6 +15,7 @@
              font-size: 18px; margin: 5px; }
              summary { cursor: pointer; font-weight: bold; padding: 8px 0; }
     .student { margin-left: 8px; border-top: 1px solid #ddd; }
+    .pinOut { font-size: 22px; font-weight: bold; word-break: break-all; margin: 8px 0; }
   </style>
 </head>
 <body>
@@ -37,6 +38,7 @@
   <button id="showTopics">SS Topics</button>
   <button id="showResults">Results</button>
   <button id="showStudents">Students</button>
+  <button id="showJamb">JAMB</button>
 
   <div id="quizForm" class="group hidden">
     <h3 id="quizFor"></h3>
@@ -58,6 +60,38 @@
   </div>
 <input id="searchBox" class="hidden" placeholder="Search student name">
   <br><br>
+  <div id="jambPanel" class="group hidden">
+    <h3>Make a JAMB PIN</h3>
+    <select id="pinDept">
+      <option>Science</option>
+      <option>Art</option>
+      <option>Commercial</option>
+    </select>
+    <select id="pinDays">
+      <option value="30">30 days</option>
+      <option value="60">60 days</option>
+      <option value="90">90 days</option>
+    </select>
+    <br><br>
+    <input id="pinNote" placeholder="Student name / payment note">
+    <br><br>
+    <button id="makePin">Make PIN</button>
+    <div id="pinOut" class="pinOut"></div>
+    <hr>
+    <h3>Send a JAMB quiz</h3>
+    <select id="jqDept">
+      <option>Science</option>
+      <option>Art</option>
+      <option>Commercial</option>
+    </select>
+    <br><br>
+    <input id="jqTitle" placeholder="Quiz title">
+    <br><br>
+    <textarea id="jqJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
+    <br><br>
+    <button id="sendJq">Send to department</button>
+    <p id="jqMsg"></p>
+  </div>
   <div id="adminList"></div>
 </div>
 
@@ -551,7 +585,214 @@ for (let i = 0; i < menuBtns.length; i++) {
     const box = document.getElementById("searchBox");
     box.value = "";
     box.classList.toggle("hidden", menuBtns[i] === "showResults");
+    document.getElementById("jambPanel").classList.add("hidden");
   });
+}
+function randomPin() {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  const bytes = new Uint8Array(10);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < bytes.length; i++) {
+    out += chars[bytes[i] % chars.length];
+  }
+  return out;
+}
+
+function parseQuestions(raw) {
+  const start = raw.indexOf("[");
+  const end = raw.lastIndexOf("]");
+  if (start === -1 || end === -1) {
+    return { error: "Paste the questions first." };
+  }
+  let questions;
+  try {
+    questions = JSON.parse(raw.slice(start, end + 1));
+  } catch (e) {
+    return { error: "The questions are not in the right format. Ask the AI again." };
+  }
+  if (!Array.isArray(questions) || questions.length === 0) {
+    return { error: "No questions found." };
+  }
+  for (let i = 0; i < questions.length; i++) {
+    const x = questions[i];
+    if (typeof x.q !== "string" || !Array.isArray(x.options) ||
+        x.options.length !== 4 || !Number.isInteger(x.answer) ||
+        x.answer < 0 || x.answer > 3) {
+      return { error: "Question " + (i + 1) + " is not in the right format." };
+    }
+  }
+  return { questions: questions };
+}
+
+document.getElementById("showJamb").addEventListener("click", function () {
+  document.getElementById("jambPanel").classList.remove("hidden");
+  document.getElementById("searchBox").classList.add("hidden");
+  document.getElementById("pinOut").textContent = "";
+  loadSubscribers();
+});
+
+document.getElementById("makePin").addEventListener("click", async function () {
+  const out = document.getElementById("pinOut");
+  const dept = document.getElementById("pinDept").value;
+  const days = Number(document.getElementById("pinDays").value);
+  const pin = randomPin();
+
+  const res = await db.from("jamb_pins").insert({
+    pin: pin,
+    department: dept,
+    days: days,
+    note: document.getElementById("pinNote").value.trim()
+  });
+  out.innerHTML = "";
+  if (res.error) {
+    out.textContent = "Could not make PIN: " + res.error.message;
+    return;
+  }
+
+  const big = document.createElement("div");
+  big.textContent = pin;
+  out.appendChild(big);
+
+  const info = document.createElement("div");
+  info.textContent = dept + " - " + days + " days";
+  out.appendChild(info);
+
+  const copy = document.createElement("button");
+  copy.textContent = "Copy";
+  copy.addEventListener("click", function () {
+    navigator.clipboard.writeText(pin);
+    copy.textContent = "Copied";
+  });
+  out.appendChild(copy);
+
+  const msg = "ACE Academy JAMB " + dept + " PIN: " + pin +
+    "\nOpen the app, tap JAMB and enter this PIN. It gives you " +
+    days + " days of access, and it works once.";
+  const wa = document.createElement("a");
+  wa.className = "waBtn";
+  wa.target = "_blank";
+  wa.textContent = "Send on WhatsApp";
+  wa.href = "https://wa.me/?text=" + encodeURIComponent(msg);
+  out.appendChild(wa);
+
+  document.getElementById("pinNote").value = "";
+  loadSubscribers();
+});
+
+document.getElementById("sendJq").addEventListener("click", async function () {
+  const msg = document.getElementById("jqMsg");
+  const title = document.getElementById("jqTitle").value.trim();
+  const dept = document.getElementById("jqDept").value;
+  const parsed = parseQuestions(document.getElementById("jqJson").value.trim());
+
+  if (title === "") {
+    msg.textContent = "Add a quiz title.";
+    return;
+  }
+  if (parsed.error) {
+    msg.textContent = parsed.error;
+    return;
+  }
+
+  msg.textContent = "Sending...";
+  const res = await db.from("jamb_quizzes").insert({
+    department: dept,
+    title: title,
+    questions: parsed.questions
+  });
+  if (res.error) {
+    msg.textContent = "Could not send: " + res.error.message;
+    return;
+  }
+  msg.textContent = "Sent to " + dept + "! (" + parsed.questions.length + " questions)";
+  document.getElementById("jqJson").value = "";
+});
+
+async function loadSubscribers() {
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const acc = await db.from("jamb_access").select("*").order("expires_at");
+  const prof = await db.from("profiles").select("user_id, student_name, username");
+  const pins = await db.from("jamb_pins")
+    .select("id, pin, department, days, note")
+    .is("used_by", null)
+    .order("created_at", { ascending: false });
+
+  box.innerHTML = "";
+  if (acc.error || pins.error) {
+    box.textContent = (acc.error || pins.error).message;
+    return;
+  }
+
+  const names = {};
+  if (prof.data) {
+    for (let i = 0; i < prof.data.length; i++) {
+      names[prof.data[i].user_id] =
+        prof.data[i].student_name + " (" + prof.data[i].username + ")";
+    }
+  }
+
+  const subs = document.createElement("div");
+  subs.className = "group";
+  const h1 = document.createElement("h3");
+  h1.textContent = "JAMB subscribers (" + acc.data.length + ")";
+  subs.appendChild(h1);
+  for (let i = 0; i < acc.data.length; i++) {
+    const a = acc.data[i];
+    const live = new Date(a.expires_at) > new Date();
+    const p = document.createElement("p");
+    p.textContent = (names[a.user_id] || a.user_id.slice(0, 8)) + " - " +
+      a.department + " - " + (live ? "active until " : "expired ") +
+      new Date(a.expires_at).toLocaleDateString() + " ";
+    const del = document.createElement("button");
+    del.className = "delBtn";
+    del.textContent = "Remove";
+    del.addEventListener("click", async function () {
+      if (!confirm("Remove this student's JAMB access?")) {
+        return;
+      }
+      const r = await db.from("jamb_access").delete()
+        .eq("user_id", a.user_id).select();
+      if (r.error || !r.data || r.data.length === 0) {
+        alert("Could not remove access.");
+        return;
+      }
+      p.remove();
+    });
+    p.appendChild(del);
+    subs.appendChild(p);
+  }
+  box.appendChild(subs);
+
+  const un = document.createElement("div");
+  un.className = "group";
+  const h2 = document.createElement("h3");
+  h2.textContent = "Unused PINs (" + pins.data.length + ")";
+  un.appendChild(h2);
+  for (let i = 0; i < pins.data.length; i++) {
+    const x = pins.data[i];
+    const p = document.createElement("p");
+    p.textContent = x.pin + " - " + x.department + " - " + x.days + " days" +
+      (x.note ? " - " + x.note : "") + " ";
+    const del = document.createElement("button");
+    del.className = "delBtn";
+    del.textContent = "Cancel";
+    del.addEventListener("click", async function () {
+      if (!confirm("Cancel this unused PIN?")) {
+        return;
+      }
+      const r = await db.from("jamb_pins").delete().eq("id", x.id).select();
+      if (r.error || !r.data || r.data.length === 0) {
+        alert("Could not cancel the PIN.");
+        return;
+      }
+      p.remove();
+    });
+    p.appendChild(del);
+    un.appendChild(p);
+  }
+  box.appendChild(un);
 }
   async function checkAdminSession() {
     const s = await db.auth.getSession();
