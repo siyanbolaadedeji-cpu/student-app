@@ -123,3 +123,16 @@ input[type="radio"] {
 .opt.right { color: #0a7d2e; font-weight: bold; }
 .opt.wrong { color: crimson; }
 .feedback { margin: 4px 20px 14px; font-weight: bold; }
+#welcomePage button {
+  display: block;
+  width: 80%;
+  max-width: 320px;
+  margin: 12px auto;
+}
+#startBtn { background-color: #00008b; }
+#startJamb { background-color: #0a7d2e; }
+#goLogin {
+  background-color: white;
+  color: #00008b;
+  border: 2px solid #00008b;
+}

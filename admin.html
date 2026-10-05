@@ -710,8 +710,12 @@ document.getElementById("sendJq").addEventListener("click", async function () {
 });
 
 async function loadSubscribers() {
+  const APPROVE_DAYS = 120;
   const box = document.getElementById("adminList");
   box.textContent = "Loading...";
+
+  const reqs = await db.from("jamb_requests").select("*")
+    .order("created_at", { ascending: false });
   const acc = await db.from("jamb_access").select("*").order("expires_at");
   const prof = await db.from("profiles").select("user_id, student_name, username");
   const pins = await db.from("jamb_pins")
@@ -720,18 +724,81 @@ async function loadSubscribers() {
     .order("created_at", { ascending: false });
 
   box.innerHTML = "";
-  if (acc.error || pins.error) {
-    box.textContent = (acc.error || pins.error).message;
+  const failed = reqs.error || acc.error || pins.error;
+  if (failed) {
+    box.textContent = failed.message;
     return;
   }
 
   const names = {};
+  for (let i = 0; i < reqs.data.length; i++) {
+    if (reqs.data[i].username) {
+      names[reqs.data[i].user_id] = reqs.data[i].username;
+    }
+  }
   if (prof.data) {
     for (let i = 0; i < prof.data.length; i++) {
       names[prof.data[i].user_id] =
         prof.data[i].student_name + " (" + prof.data[i].username + ")";
     }
   }
+  function who(id) {
+    return names[id] || id.slice(0, 8);
+  }
+
+  const pending = reqs.data.filter(function (r) {
+    return r.status === "pending";
+  });
+
+  const pBox = document.createElement("div");
+  pBox.className = "group";
+  const ph = document.createElement("h3");
+  ph.textContent = "Pending JAMB payments (" + pending.length + ")";
+  pBox.appendChild(ph);
+  for (let i = 0; i < pending.length; i++) {
+    const r = pending[i];
+    const p = document.createElement("p");
+    p.textContent = who(r.user_id) + " - " + r.department + " - requested " +
+      new Date(r.created_at).toLocaleDateString() + " ";
+
+    const ok = document.createElement("button");
+    ok.textContent = "Approve " + APPROVE_DAYS + " days";
+    ok.addEventListener("click", async function () {
+      if (!confirm("Approve " + who(r.user_id) + " for " + APPROVE_DAYS +
+          " days? Check the receipt first.")) {
+        return;
+      }
+      const res = await db.rpc("approve_jamb", {
+        p_user: r.user_id,
+        p_days: APPROVE_DAYS
+      });
+      if (res.error) {
+        alert("Could not approve: " + res.error.message);
+        return;
+      }
+      loadSubscribers();
+    });
+    p.appendChild(ok);
+
+    const del = document.createElement("button");
+    del.className = "delBtn";
+    del.textContent = "Remove";
+    del.addEventListener("click", async function () {
+      if (!confirm("Remove this request? The student could choose a department again.")) {
+        return;
+      }
+      const res = await db.from("jamb_requests").delete()
+        .eq("user_id", r.user_id).select();
+      if (res.error || !res.data || res.data.length === 0) {
+        alert("Could not remove the request.");
+        return;
+      }
+      p.remove();
+    });
+    p.appendChild(del);
+    pBox.appendChild(p);
+  }
+  box.appendChild(pBox);
 
   const subs = document.createElement("div");
   subs.className = "group";
@@ -742,8 +809,8 @@ async function loadSubscribers() {
     const a = acc.data[i];
     const live = new Date(a.expires_at) > new Date();
     const p = document.createElement("p");
-    p.textContent = (names[a.user_id] || a.user_id.slice(0, 8)) + " - " +
-      a.department + " - " + (live ? "active until " : "expired ") +
+    p.textContent = who(a.user_id) + " - " + a.department + " - " +
+      (live ? "active until " : "expired ") +
       new Date(a.expires_at).toLocaleDateString() + " ";
     const del = document.createElement("button");
     del.className = "delBtn";
