@@ -614,7 +614,19 @@ async function loadMyTopics() {
   }
 }
 
+const PASS_MARK = 80;
+const SHOW_ANSWERS_ONLY_IF_PASSED = false;
 let currentQuiz = null;
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = arr[i];
+    arr[i] = arr[j];
+    arr[j] = t;
+  }
+  return arr;
+}
 
 async function loadQuizzes() {
   const list = document.getElementById("quizList");
@@ -623,8 +635,7 @@ async function loadQuizzes() {
     .select("id, title, questions")
     .order("created_at", { ascending: false });
   const done = await db.from("quiz_results")
-    .select("quiz_id, score, total")
-    .order("created_at", { ascending: true });
+    .select("quiz_id, score, total");
 
   list.innerHTML = "";
   if (res.error) {
@@ -636,33 +647,48 @@ async function loadQuizzes() {
     return;
   }
 
-  const scores = {};
+  const best = {};
   if (done.data) {
     for (let i = 0; i < done.data.length; i++) {
-      scores[done.data[i].quiz_id] =
-        done.data[i].score + " / " + done.data[i].total;
+      const r = done.data[i];
+      const pct = r.score / r.total * 100;
+      if (best[r.quiz_id] === undefined || pct > best[r.quiz_id]) {
+        best[r.quiz_id] = pct;
+      }
     }
   }
 
   for (let i = 0; i < res.data.length; i++) {
     const quiz = res.data[i];
+    const top = best[quiz.id];
     const p = document.createElement("p");
     p.textContent = quiz.title;
-    if (scores[quiz.id]) {
-      p.textContent += " (last score: " + scores[quiz.id] + ")";
+    if (top !== undefined) {
+      p.textContent += " (best score: " + Math.round(top) + "%)";
     }
-    const b = document.createElement("button");
-    b.textContent = scores[quiz.id] ? "Retake" : "Start";
-    b.addEventListener("click", function () {
-      openQuiz(quiz);
-    });
     list.appendChild(p);
-    list.appendChild(b);
+
+    if (top !== undefined && top >= PASS_MARK) {
+      const ok = document.createElement("p");
+      ok.textContent = "✅ Passed";
+      list.appendChild(ok);
+    } else {
+      const b = document.createElement("button");
+      b.textContent = top === undefined ? "Start" : "Retake";
+      b.addEventListener("click", function () {
+        openQuiz(quiz);
+      });
+      list.appendChild(b);
+    }
   }
 }
 
 function openQuiz(quiz) {
-  currentQuiz = quiz;
+  currentQuiz = {
+    id: quiz.id,
+    title: quiz.title,
+    questions: shuffle(quiz.questions.slice())
+  };
   document.getElementById("quizList").classList.add("hidden");
   document.getElementById("quizTake").classList.remove("hidden");
   document.getElementById("quizTitleShow").textContent = quiz.title;
@@ -671,14 +697,16 @@ function openQuiz(quiz) {
 
   const box = document.getElementById("quizQuestions");
   box.innerHTML = "";
-  for (let i = 0; i < quiz.questions.length; i++) {
-    const q = quiz.questions[i];
+  const qs = currentQuiz.questions;
+  for (let i = 0; i < qs.length; i++) {
+    const q = qs[i];
     const p = document.createElement("p");
     p.textContent = (i + 1) + ". " + q.q;
     box.appendChild(p);
     for (let j = 0; j < q.options.length; j++) {
       const label = document.createElement("label");
       label.className = "opt";
+      label.id = "opt" + i + "_" + j;
       const radio = document.createElement("input");
       radio.type = "radio";
       radio.name = "q" + i;
@@ -687,21 +715,66 @@ function openQuiz(quiz) {
       label.append(" " + String.fromCharCode(65 + j) + ". " + q.options[j]);
       box.appendChild(label);
     }
+    const fb = document.createElement("div");
+    fb.id = "fb" + i;
+    fb.className = "feedback";
+    box.appendChild(fb);
   }
 }
 
 document.getElementById("submitQuiz").addEventListener("click", async function () {
+  if (!currentQuiz) {
+    return;
+  }
   const qs = currentQuiz.questions;
   let score = 0;
+  const right = [];
+  const picked = [];
   for (let i = 0; i < qs.length; i++) {
     const chosen = document.querySelector("input[name='q" + i + "']:checked");
-    if (chosen && Number(chosen.value) === qs[i].answer) {
+    const val = chosen ? Number(chosen.value) : -1;
+    picked.push(val);
+    right.push(val === qs[i].answer);
+    if (val === qs[i].answer) {
       score++;
     }
   }
+
+  const pct = Math.round(score / qs.length * 100);
+  const passed = pct >= PASS_MARK;
+  const showAnswers = !SHOW_ANSWERS_ONLY_IF_PASSED || passed;
+
+  for (let i = 0; i < qs.length; i++) {
+    const fb = document.getElementById("fb" + i);
+    const letter = String.fromCharCode(65 + qs[i].answer);
+    if (right[i]) {
+      fb.textContent = "✅ Correct";
+    } else if (showAnswers) {
+      fb.textContent = "❌ Correct answer: " + letter + ". " +
+        qs[i].options[qs[i].answer];
+    } else {
+      fb.textContent = "❌ Not correct";
+    }
+    for (let j = 0; j < qs[i].options.length; j++) {
+      const label = document.getElementById("opt" + i + "_" + j);
+      if (showAnswers && j === qs[i].answer) {
+        label.classList.add("right");
+      } else if (j === picked[i] && !right[i]) {
+        label.classList.add("wrong");
+      }
+    }
+    const radios = document.getElementsByName("q" + i);
+    for (let r = 0; r < radios.length; r++) {
+      radios[r].disabled = true;
+    }
+  }
+
   this.disabled = true;
   document.getElementById("quizScore").textContent =
-    "Score: " + score + " / " + qs.length;
+    "Score: " + score + " / " + qs.length + " (" + pct + "%) " +
+    (passed ? "- Well done, you passed! ✅"
+            : "- Below " + PASS_MARK + "%. Go back and retake this quiz.");
+
   await db.from("quiz_results").insert({
     quiz_id: currentQuiz.id,
     score: score,

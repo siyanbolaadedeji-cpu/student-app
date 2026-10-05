@@ -120,3 +120,6 @@ input[type="radio"] {
   font-size: 14px;
   margin: 0 6px;
 }
+.opt.right { color: #0a7d2e; font-weight: bold; }
+.opt.wrong { color: crimson; }
+.feedback { margin: 4px 20px 14px; font-weight: bold; }
