@@ -21,7 +21,8 @@
   </div>
 
   <br>
-  <button id="startBtn">Register</button>
+  <button id="startBtn">Register as a Regular student</button>
+  <button id="startJamb">Register as a JAMB student</button>
   <button id="goLogin">Login</button>
 </div>
 
@@ -64,7 +65,26 @@
     <button id="registerBtn">Register</button>
     <p id="error"></p>
   </div>
-  
+  <div id="jambRegister" class="screen hidden">
+    <h1>JAMB Registration</h1>
+    <input id="jUsername" placeholder="Choose a username">
+    <br><br>
+    <div class="pwWrap">
+      <input id="jPassword" type="password" placeholder="Choose a password (6+ characters)">
+      <span class="eye" data-target="jPassword">👁</span>
+    </div>
+    <br><br>
+    <select id="jDept">
+      <option value="">Select your department</option>
+      <option>Science</option>
+      <option>Art</option>
+      <option>Commercial</option>
+    </select>
+    <br><br>
+    <p>You will pay a subscription fee after registering. Your department cannot be changed later.</p>
+    <button id="jRegisterBtn">Register</button>
+    <p id="jError"></p>
+  </div>
   <div id="loginPage" class="screen hidden">
   <h1>Student Login</h1>
   <input id="loginUser" placeholder="Username">
@@ -83,9 +103,10 @@
   <h1 id="welcome"></h1>
   <button id="logout">Log out</button>
   <br><br>
-  <button class="menuBtn" data-tab="notesTab">Notes</button>
-  <button class="menuBtn" data-tab="questionsTab">Questions</button>
-  <button class="menuBtn" data-tab="timetableTab">Timetable</button>
+<button class="menuBtn regularBtn" data-tab="notesTab">Notes</button>
+  <button class="menuBtn regularBtn" data-tab="questionsTab">Questions</button>
+  <button class="menuBtn regularBtn" data-tab="timetableTab">Timetable</button>
+  <button class="menuBtn" data-tab="jambTab">JAMB</button>
 
   <div id="notesTab" class="tab">
 
@@ -161,7 +182,10 @@
   <button id="addTt">Add to timetable</button>
   <div id="ttList"></div>
 </div>
-
+<div id="jambTab" class="tab hidden">
+    <h2>JAMB</h2>
+    <div id="jambBody"></div>
+  </div>
 <div id="reminderBox" class="hidden">
   <h2>⏰ Study Time</h2>
   <p id="reminderText"></p>
@@ -198,6 +222,20 @@ document.getElementById("goLogin").addEventListener("click", function () {
 
 function showWelcome(user) {
   const m = user.user_metadata;
+  const jambOnly = m.jamb === true;
+
+  const regular = document.querySelectorAll(".regularBtn");
+  for (let i = 0; i < regular.length; i++) {
+    regular[i].classList.toggle("hidden", jambOnly);
+  }
+
+  if (jambOnly) {
+    document.getElementById("welcome").innerText =
+      "Welcome, " + user.email.split("@")[0] + " (JAMB " + m.department + ")";
+    showTab("jambTab");
+    return;
+  }
+
   document.getElementById("welcome").innerText =
     "Welcome, " + m.name + " (" + m.studentClass + ", " + m.school + ")";
 
@@ -207,6 +245,7 @@ function showWelcome(user) {
   if (!isJSS) {
     loadMyTopics();
   }
+  showTab("notesTab");
 }
 function cleanPhone(raw) {
   let d = raw.replace(/\D/g, "");
@@ -315,6 +354,9 @@ function showTab(id) {
     if (id === "questionsTab") {
     loadQuizzes();
   }
+  }
+  if (id === "jambTab") {
+    loadJamb();
   }
   document.getElementById(id).classList.remove("hidden");
 }
@@ -787,7 +829,170 @@ document.getElementById("backQuiz").addEventListener("click", function () {
   document.getElementById("quizList").classList.remove("hidden");
   loadQuizzes();
 });
+document.getElementById("startJamb").addEventListener("click", function () {
+  showScreen("jambRegister");
+});
 
+document.getElementById("jRegisterBtn").addEventListener("click", async function () {
+  const username = document.getElementById("jUsername").value.trim();
+  const password = document.getElementById("jPassword").value;
+  const dept = document.getElementById("jDept").value;
+  const msg = document.getElementById("jError");
+
+  if (username === "" || password === "" || dept === "") {
+    msg.innerText = "Please fill in all the fields.";
+    return;
+  }
+  if (username.includes(" ")) {
+    msg.innerText = "Username cannot have spaces.";
+    return;
+  }
+  if (password.length < 6) {
+    msg.innerText = "Password must be at least 6 characters.";
+    return;
+  }
+
+  msg.innerText = "Creating your account...";
+  const result = await db.auth.signUp({
+    email: makeEmail(username),
+    password: password,
+    options: { data: { jamb: true, department: dept } }
+  });
+  if (result.error) {
+    msg.innerText = result.error.message;
+    return;
+  }
+  if (!result.data.session) {
+    msg.innerText = "Account created, but email confirmation is still ON in Supabase.";
+    return;
+  }
+
+  const r = await db.rpc("request_jamb", { p_dept: dept });
+  if (r.error) {
+    msg.innerText = r.error.message;
+    return;
+  }
+  msg.innerText = "";
+  showWelcome(result.data.user);
+  showScreen("home");
+});
+const JAMB_FEE = "₦3,000";
+const JAMB_DAYS = 120;
+const PAY_BANK = "Moniepoint MFB";
+const PAY_ACCOUNT = "5289820470";
+const PAY_NAME = "Akintunde Siyanbola";
+const PAY_WHATSAPP = "2348169564045";
+
+function addLine(parent, text) {
+  const p = document.createElement("p");
+  p.textContent = text;
+  parent.appendChild(p);
+  return p;
+}
+
+async function loadJamb() {
+  const body = document.getElementById("jambBody");
+  body.textContent = "Loading...";
+
+  const userRes = await db.auth.getUser();
+  const user = userRes.data.user;
+  const username = user.email.split("@")[0];
+
+  const reqRes = await db.from("jamb_requests").select("*").maybeSingle();
+  const accRes = await db.from("jamb_access").select("*").maybeSingle();
+  body.innerHTML = "";
+
+  const req = reqRes.data;
+  const acc = accRes.data;
+  const active = acc && new Date(acc.expires_at) > new Date();
+
+  if (!req) {
+    addLine(body, "Join JAMB practice. Choose your department. You cannot change it later.");
+    const sel = document.createElement("select");
+    const opts = ["", "Science", "Art", "Commercial"];
+    for (let i = 0; i < opts.length; i++) {
+      const o = document.createElement("option");
+      o.value = opts[i];
+      o.textContent = opts[i] === "" ? "Select your department" : opts[i];
+      sel.appendChild(o);
+    }
+    body.appendChild(sel);
+    body.appendChild(document.createElement("br"));
+    body.appendChild(document.createElement("br"));
+    const msg = document.createElement("p");
+    const join = document.createElement("button");
+    join.textContent = "Join JAMB";
+    join.addEventListener("click", async function () {
+      if (sel.value === "") {
+        msg.textContent = "Choose a department.";
+        return;
+      }
+      const r = await db.rpc("request_jamb", { p_dept: sel.value });
+      if (r.error) {
+        msg.textContent = r.error.message;
+        return;
+      }
+      loadJamb();
+    });
+    body.appendChild(join);
+    body.appendChild(msg);
+    return;
+  }
+
+  if (active) {
+    addLine(body, "✅ Active - " + acc.department + " department. Access until " +
+      new Date(acc.expires_at).toLocaleDateString() + ".");
+    const box = document.createElement("div");
+    box.id = "jambQuizzes";
+    box.textContent = "JAMB quizzes will appear here.";
+    body.appendChild(box);
+    return;
+  }
+
+  addLine(body, "Department: " + req.department + " (cannot be changed)");
+  if (acc) {
+    addLine(body, "Your JAMB access ended on " +
+      new Date(acc.expires_at).toLocaleDateString() + ".");
+  }
+  addLine(body, "JAMB subscription: " + JAMB_FEE + " for " + JAMB_DAYS + " days.");
+  addLine(body, "Pay to: " + PAY_BANK + ", " + PAY_ACCOUNT + ", " + PAY_NAME + ".");
+  addLine(body, "Use your username (" + username + ") as the payment reference.");
+
+  const copy = document.createElement("button");
+  copy.textContent = "Copy account number";
+  copy.addEventListener("click", function () {
+    navigator.clipboard.writeText(PAY_ACCOUNT);
+    copy.textContent = "Copied";
+  });
+  body.appendChild(copy);
+  body.appendChild(document.createElement("br"));
+  body.appendChild(document.createElement("br"));
+
+  const note = document.createElement("p");
+  const send = document.createElement("button");
+  send.textContent = "I have paid - send receipt on WhatsApp";
+  send.addEventListener("click", async function () {
+    const r = await db.rpc("renew_jamb");
+    if (r.error) {
+      note.textContent = "Something went wrong: " + r.error.message;
+      return;
+    }
+    const text = "Hello, I have paid " + JAMB_FEE + " for ACE Academy JAMB (" +
+      req.department + "). Username: " + username + ". My receipt is attached.";
+    window.location.href = "https://wa.me/" + PAY_WHATSAPP +
+      "?text=" + encodeURIComponent(text);
+  });
+  body.appendChild(send);
+  body.appendChild(document.createElement("br"));
+  body.appendChild(document.createElement("br"));
+
+  const check = document.createElement("button");
+  check.textContent = "Check my access";
+  check.addEventListener("click", loadJamb);
+  body.appendChild(check);
+  body.appendChild(note);
+  addLine(body, "After you send your receipt, you will be approved as soon as possible. Tap \"Check my access\" to see.");
+}
 async function checkSession() {
   const result = await db.auth.getSession();
   if (result.data.session) {
