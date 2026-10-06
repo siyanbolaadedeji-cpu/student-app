@@ -106,8 +106,7 @@
 <button class="menuBtn regularBtn" data-tab="notesTab">Notes</button>
   <button class="menuBtn regularBtn" data-tab="questionsTab">Questions</button>
   <button class="menuBtn regularBtn" data-tab="timetableTab">Timetable</button>
-  <button class="menuBtn" data-tab="jambTab">JAMB</button>
-
+  <button class="menuBtn jambBtn" data-tab="jambTab">JAMB</button>
   <div id="notesTab" class="tab">
 
   <div id="jssNotes">
@@ -231,6 +230,7 @@ function showWelcome(user) {
   for (let i = 0; i < regular.length; i++) {
     regular[i].classList.toggle("hidden", jambOnly);
   }
+  document.querySelector(".jambBtn").classList.toggle("hidden", !jambOnly);
 
   if (jambOnly) {
     document.getElementById("welcome").innerText =
