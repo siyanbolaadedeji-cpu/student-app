@@ -61,9 +61,9 @@
 <input id="searchBox" class="hidden" placeholder="Search student name">
   <br><br>
   <div id="jambPanel" class="group hidden">
-    <button id="jSubs">Subscribers</button>
-    <button id="jRes">JAMB Results</button>
-    <button id="jQz">Sent quizzes</button>
+    <button id="jSubs" onclick="loadSubscribers()">Subscribers</button>
+    <button id="jRes" onclick="loadJambResults()">JAMB Results</button>
+    <button id="jQz" onclick="loadJambQuizzes()">Sent quizzes</button>
     <hr>
     <h3>Make a JAMB PIN</h3>
     <select id="pinDept">
@@ -866,10 +866,6 @@ async function loadSubscribers() {
   }
   box.appendChild(un);
 }
-document.getElementById("jSubs").addEventListener("click", loadSubscribers);
-document.getElementById("jRes").addEventListener("click", loadJambResults);
-document.getElementById("jQz").addEventListener("click", loadJambQuizzes);
-
 async function loadJambResults() {
   const box = document.getElementById("adminList");
   box.textContent = "Loading...";
