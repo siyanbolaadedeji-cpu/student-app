@@ -974,9 +974,8 @@ async function loadJamb() {
     addLine(body, "✅ Active - " + acc.department + " department. Access until " +
       new Date(acc.expires_at).toLocaleDateString() + ".");
     const box = document.createElement("div");
-    box.id = "jambQuizzes";
-    box.textContent = "JAMB quizzes will appear here.";
     body.appendChild(box);
+    loadJambQuizzes(box, acc.department);
     return;
   }
 
@@ -1034,6 +1033,191 @@ window.addEventListener("popstate", function () {
     }
   }
 });
+const JAMB_RETAKE_ANY = false;
+
+async function loadJambQuizzes(box, dept) {
+  box.textContent = "Loading...";
+  const res = await db.from("jamb_quizzes")
+    .select("id, title, questions")
+    .eq("department", dept)
+    .order("created_at", { ascending: false });
+  const done = await db.from("jamb_results").select("quiz_id, score, total");
+
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = "Could not load quizzes.";
+    return;
+  }
+  if (res.data.length === 0) {
+    box.textContent = "No JAMB quizzes yet. Your teacher will send some soon.";
+    return;
+  }
+
+  const best = {};
+  if (done.data) {
+    for (let i = 0; i < done.data.length; i++) {
+      const r = done.data[i];
+      const pct = r.score / r.total * 100;
+      if (best[r.quiz_id] === undefined || pct > best[r.quiz_id]) {
+        best[r.quiz_id] = pct;
+      }
+    }
+  }
+
+  for (let i = 0; i < res.data.length; i++) {
+    const quiz = res.data[i];
+    const top = best[quiz.id];
+    const p = document.createElement("p");
+    p.textContent = quiz.title;
+    if (top !== undefined) {
+      p.textContent += " (best score: " + Math.round(top) + "%)";
+    }
+    box.appendChild(p);
+
+    if (top !== undefined && top >= PASS_MARK && !JAMB_RETAKE_ANY) {
+      const ok = document.createElement("p");
+      ok.textContent = "✅ Passed";
+      box.appendChild(ok);
+    } else {
+      const b = document.createElement("button");
+      b.textContent = top === undefined ? "Start" : "Retake";
+      b.addEventListener("click", function () {
+        openJambQuiz(quiz, box, dept);
+      });
+      box.appendChild(b);
+    }
+  }
+}
+
+function openJambQuiz(quiz, box, dept) {
+  const qs = shuffle(quiz.questions.slice());
+  box.innerHTML = "";
+
+  const title = document.createElement("h3");
+  title.textContent = quiz.title;
+  box.appendChild(title);
+
+  const radiosByQ = [];
+  const labelsByQ = [];
+  const fbs = [];
+  for (let i = 0; i < qs.length; i++) {
+    const q = qs[i];
+    const p = document.createElement("p");
+    p.textContent = (i + 1) + ". " + q.q;
+    box.appendChild(p);
+
+    const radios = [];
+    const labels = [];
+    for (let j = 0; j < q.options.length; j++) {
+      const label = document.createElement("label");
+      label.className = "opt";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "jq" + i;
+      radio.value = j;
+      label.appendChild(radio);
+      label.append(" " + String.fromCharCode(65 + j) + ". " + q.options[j]);
+      box.appendChild(label);
+      radios.push(radio);
+      labels.push(label);
+    }
+    const fb = document.createElement("div");
+    fb.className = "feedback";
+    box.appendChild(fb);
+    radiosByQ.push(radios);
+    labelsByQ.push(labels);
+    fbs.push(fb);
+  }
+
+  const submit = document.createElement("button");
+  submit.textContent = "Submit answers";
+  const back = document.createElement("button");
+  back.textContent = "Back";
+  back.addEventListener("click", function () {
+    loadJambQuizzes(box, dept);
+  });
+  const scoreEl = document.createElement("h3");
+  box.appendChild(submit);
+  box.appendChild(back);
+  box.appendChild(scoreEl);
+
+  submit.addEventListener("click", async function () {
+    let score = 0;
+    const right = [];
+    const picked = [];
+    for (let i = 0; i < qs.length; i++) {
+      let val = -1;
+      for (let j = 0; j < radiosByQ[i].length; j++) {
+        if (radiosByQ[i][j].checked) {
+          val = j;
+        }
+      }
+      picked.push(val);
+      right.push(val === qs[i].answer);
+      if (val === qs[i].answer) {
+        score++;
+      }
+    }
+
+    const pct = Math.round(score / qs.length * 100);
+    const passed = pct >= PASS_MARK;
+    const showAnswers = !SHOW_ANSWERS_ONLY_IF_PASSED || passed;
+
+    for (let i = 0; i < qs.length; i++) {
+      const letter = String.fromCharCode(65 + qs[i].answer);
+      if (right[i]) {
+        fbs[i].textContent = "✅ Correct";
+      } else if (showAnswers) {
+        fbs[i].textContent = "❌ Correct answer: " + letter + ". " +
+          qs[i].options[qs[i].answer];
+      } else {
+        fbs[i].textContent = "❌ Not correct";
+      }
+      for (let j = 0; j < labelsByQ[i].length; j++) {
+        if (showAnswers && j === qs[i].answer) {
+          labelsByQ[i][j].classList.add("right");
+        } else if (j === picked[i] && !right[i]) {
+          labelsByQ[i][j].classList.add("wrong");
+        }
+        radiosByQ[i][j].disabled = true;
+      }
+    }
+
+    submit.disabled = true;
+    scoreEl.textContent = "Score: " + score + " / " + qs.length + " (" + pct +
+      "%) " + (passed ? "- Well done, you passed! ✅"
+        : "- Below " + PASS_MARK + "%. Go back and retake this quiz.");
+
+    const missed = [];
+    for (let i = 0; i < qs.length; i++) {
+      if (!right[i]) {
+        missed.push(i);
+      }
+    }
+    if (missed.length > 0 && showAnswers) {
+      const mb = document.createElement("div");
+      mb.className = "missed";
+      const h = document.createElement("h4");
+      h.textContent = "Questions you missed (" + missed.length + ")";
+      mb.appendChild(h);
+      for (let m = 0; m < missed.length; m++) {
+        const i = missed[m];
+        const p = document.createElement("p");
+        p.textContent = (i + 1) + ". " + qs[i].q + " - Correct answer: " +
+          String.fromCharCode(65 + qs[i].answer) + ". " +
+          qs[i].options[qs[i].answer];
+        mb.appendChild(p);
+      }
+      scoreEl.after(mb);
+    }
+
+    await db.from("jamb_results").insert({
+      quiz_id: quiz.id,
+      score: score,
+      total: qs.length
+    });
+  });
+}
 async function checkSession() {
   const result = await db.auth.getSession();
   if (result.data.session) {
