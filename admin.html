@@ -61,6 +61,10 @@
 <input id="searchBox" class="hidden" placeholder="Search student name">
   <br><br>
   <div id="jambPanel" class="group hidden">
+    <button id="jSubs">Subscribers</button>
+    <button id="jRes">JAMB Results</button>
+    <button id="jQz">Sent quizzes</button>
+    <hr>
     <h3>Make a JAMB PIN</h3>
     <select id="pinDept">
       <option>Science</option>
@@ -861,6 +865,150 @@ async function loadSubscribers() {
     un.appendChild(p);
   }
   box.appendChild(un);
+}
+document.getElementById("jSubs").addEventListener("click", loadSubscribers);
+document.getElementById("jRes").addEventListener("click", loadJambResults);
+document.getElementById("jQz").addEventListener("click", loadJambQuizzes);
+
+async function loadJambResults() {
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("jamb_results")
+    .select("score, total, created_at, student_id, jamb_quizzes(title, department)")
+    .order("created_at", { ascending: true });
+  const reqs = await db.from("jamb_requests").select("user_id, username");
+  const prof = await db.from("profiles").select("user_id, student_name, username");
+
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
+  }
+  if (res.data.length === 0) {
+    box.textContent = "No JAMB results yet.";
+    return;
+  }
+
+  const names = {};
+  if (reqs.data) {
+    for (let i = 0; i < reqs.data.length; i++) {
+      names[reqs.data[i].user_id] = reqs.data[i].username;
+    }
+  }
+  if (prof.data) {
+    for (let i = 0; i < prof.data.length; i++) {
+      names[prof.data[i].user_id] =
+        prof.data[i].student_name + " (" + prof.data[i].username + ")";
+    }
+  }
+
+  const groups = {};
+  for (let i = 0; i < res.data.length; i++) {
+    const r = res.data[i];
+    const qz = r.jamb_quizzes || {};
+    const dept = qz.department || "Unknown";
+    if (!groups[dept]) {
+      groups[dept] = {};
+    }
+    if (!groups[dept][r.student_id]) {
+      groups[dept][r.student_id] = {
+        name: names[r.student_id] || r.student_id.slice(0, 8),
+        rows: []
+      };
+    }
+    groups[dept][r.student_id].rows.push({
+      title: qz.title || "Quiz",
+      score: r.score,
+      total: r.total,
+      date: new Date(r.created_at).toLocaleDateString()
+    });
+  }
+
+  const depts = Object.keys(groups).sort();
+  for (let d = 0; d < depts.length; d++) {
+    const div = document.createElement("div");
+    div.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = depts[d];
+    div.appendChild(h);
+
+    const ids = Object.keys(groups[depts[d]]);
+    for (let s = 0; s < ids.length; s++) {
+      const st = groups[depts[d]][ids[s]];
+      let sum = 0;
+      for (let i = 0; i < st.rows.length; i++) {
+        sum += st.rows[i].score / st.rows[i].total * 100;
+      }
+      const avg = Math.round(sum / st.rows.length);
+
+      const head = document.createElement("h4");
+      head.textContent = st.name + " - average " + avg + "% (" +
+        st.rows.length + " attempts)";
+      div.appendChild(head);
+
+      for (let i = 0; i < st.rows.length; i++) {
+        const p = document.createElement("p");
+        p.textContent = st.rows[i].date + ": " + st.rows[i].title +
+          " - " + st.rows[i].score + "/" + st.rows[i].total;
+        div.appendChild(p);
+      }
+    }
+    box.appendChild(div);
+  }
+}
+
+async function loadJambQuizzes() {
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("jamb_quizzes")
+    .select("id, department, title, questions, created_at")
+    .order("created_at", { ascending: false });
+
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
+  }
+  if (res.data.length === 0) {
+    box.textContent = "No JAMB quizzes sent yet.";
+    return;
+  }
+
+  const depts = ["Science", "Art", "Commercial"];
+  for (let d = 0; d < depts.length; d++) {
+    const list = res.data.filter(function (q) {
+      return q.department === depts[d];
+    });
+    const div = document.createElement("div");
+    div.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = depts[d] + " (" + list.length + " quizzes)";
+    div.appendChild(h);
+
+    for (let i = 0; i < list.length; i++) {
+      const q = list[i];
+      const p = document.createElement("p");
+      p.textContent = new Date(q.created_at).toLocaleDateString() + " - " +
+        q.title + " (" + q.questions.length + " questions) ";
+      const del = document.createElement("button");
+      del.className = "delBtn";
+      del.textContent = "Delete";
+      del.addEventListener("click", async function () {
+        if (!confirm("Delete this quiz? Students' scores for it will be deleted too.")) {
+          return;
+        }
+        const r = await db.from("jamb_quizzes").delete().eq("id", q.id).select();
+        if (r.error || !r.data || r.data.length === 0) {
+          alert("Could not delete the quiz.");
+          return;
+        }
+        p.remove();
+      });
+      p.appendChild(del);
+      div.appendChild(p);
+    }
+    box.appendChild(div);
+  }
 }
   async function checkAdminSession() {
     const s = await db.auth.getSession();
