@@ -106,6 +106,7 @@
 <button class="menuBtn regularBtn" data-tab="notesTab">Notes</button>
   <button class="menuBtn regularBtn" data-tab="questionsTab">Questions</button>
   <button class="menuBtn regularBtn" data-tab="timetableTab">Timetable</button>
+  <button class="menuBtn regularBtn" data-tab="englishTab">English Daily</button>
   <button class="menuBtn jambBtn" data-tab="jambTab">JAMB</button>
   <div id="notesTab" class="tab">
 
@@ -180,6 +181,10 @@
   <button id="addTt">Add to timetable</button>
   <div id="ttList"></div>
 </div>
+<div id="englishTab" class="tab hidden">
+    <h2>English Daily</h2>
+    <div id="englishBody"></div>
+  </div>
 <div id="jambTab" class="tab hidden">
     <h2>JAMB</h2>
     <div id="jambBody"></div>
@@ -366,6 +371,9 @@ function showTab(id) {
   }
   if (id === "jambTab") {
     loadJamb();
+  }
+  if (id === "englishTab") {
+    loadEnglish();
   }
   document.getElementById(id).classList.remove("hidden");
 }
@@ -1376,6 +1384,227 @@ function restoreProgress(kind, id, order, prefix) {
     });
   }
   saveProgress(kind, id, order, prefix);
+}
+const ENGLISH_RETAKE_ANY = false;
+
+async function loadEnglish() {
+  const box = document.getElementById("englishBody");
+  box.textContent = "Loading...";
+  const res = await db.from("english_sets")
+    .select("id, publish_date, title, questions")
+    .order("publish_date", { ascending: false });
+  const done = await db.from("english_results")
+    .select("set_id, score, total, created_at");
+
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = "Could not load English Daily.";
+    return;
+  }
+  if (res.data.length === 0) {
+    box.textContent = "No English questions yet. Check back soon.";
+    return;
+  }
+
+  const best = {};
+  const days = {};
+  if (done.data) {
+    for (let i = 0; i < done.data.length; i++) {
+      const r = done.data[i];
+      const pct = r.score / r.total * 100;
+      if (best[r.set_id] === undefined || pct > best[r.set_id]) {
+        best[r.set_id] = pct;
+      }
+      days[new Date(r.created_at).toLocaleDateString("en-CA")] = true;
+    }
+  }
+
+  let streak = 0;
+  const d = new Date();
+  if (!days[d.toLocaleDateString("en-CA")]) {
+    d.setDate(d.getDate() - 1);
+  }
+  while (days[d.toLocaleDateString("en-CA")]) {
+    streak++;
+    d.setDate(d.getDate() - 1);
+  }
+  const fire = document.createElement("p");
+  fire.textContent = streak > 0
+    ? "🔥 " + streak + "-day streak! Keep going."
+    : "Take today's set to start a streak.";
+  box.appendChild(fire);
+
+  const today = new Date().toLocaleDateString("en-CA");
+  for (let i = 0; i < res.data.length; i++) {
+    const set = res.data[i];
+    const top = best[set.id];
+    const when = set.publish_date === today
+      ? "Today"
+      : new Date(set.publish_date + "T00:00:00").toLocaleDateString();
+    const p = document.createElement("p");
+    p.textContent = when + ": " + set.title;
+    if (top !== undefined) {
+      p.textContent += " (best score: " + Math.round(top) + "%)";
+    }
+    box.appendChild(p);
+
+    if (top !== undefined && top >= PASS_MARK && !ENGLISH_RETAKE_ANY) {
+      const ok = document.createElement("p");
+      ok.textContent = "✅ Passed";
+      box.appendChild(ok);
+    } else {
+      const b = document.createElement("button");
+      b.textContent = top === undefined ? "Start" : "Retake";
+      b.addEventListener("click", function () {
+        openEnglishQuiz(set);
+      });
+      box.appendChild(b);
+    }
+  }
+}
+
+function openEnglishQuiz(set) {
+  const box = document.getElementById("englishBody");
+  const saved = loadProgress("english", set.id, set.questions.length);
+  const order = saved ? saved.order : shuffle(set.questions.map(function (q, i) {
+    return i;
+  }));
+  const qs = order.map(function (i) {
+    return set.questions[i];
+  });
+  box.innerHTML = "";
+
+  const title = document.createElement("h3");
+  title.textContent = set.title;
+  box.appendChild(title);
+
+  const radiosByQ = [];
+  const labelsByQ = [];
+  const fbs = [];
+  for (let i = 0; i < qs.length; i++) {
+    const q = qs[i];
+    const p = document.createElement("p");
+    p.textContent = (i + 1) + ". " + q.q;
+    box.appendChild(p);
+
+    const radios = [];
+    const labels = [];
+    for (let j = 0; j < q.options.length; j++) {
+      const label = document.createElement("label");
+      label.className = "opt";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "eq" + i;
+      radio.value = j;
+      label.appendChild(radio);
+      label.append(" " + String.fromCharCode(65 + j) + ". " + q.options[j]);
+      box.appendChild(label);
+      radios.push(radio);
+      labels.push(label);
+    }
+    const fb = document.createElement("div");
+    fb.className = "feedback";
+    box.appendChild(fb);
+    radiosByQ.push(radios);
+    labelsByQ.push(labels);
+    fbs.push(fb);
+  }
+
+  restoreProgress("english", set.id, order, "eq");
+  keepAwake();
+
+  const submit = document.createElement("button");
+  submit.textContent = "Submit answers";
+  const back = document.createElement("button");
+  back.textContent = "Back";
+  back.addEventListener("click", function () {
+    clearProgress("english", set.id);
+    releaseAwake();
+    loadEnglish();
+  });
+  const scoreEl = document.createElement("h3");
+  box.appendChild(submit);
+  box.appendChild(back);
+  box.appendChild(scoreEl);
+
+  submit.addEventListener("click", async function () {
+    let score = 0;
+    const right = [];
+    const picked = [];
+    for (let i = 0; i < qs.length; i++) {
+      let val = -1;
+      for (let j = 0; j < radiosByQ[i].length; j++) {
+        if (radiosByQ[i][j].checked) {
+          val = j;
+        }
+      }
+      picked.push(val);
+      right.push(val === qs[i].answer);
+      if (val === qs[i].answer) {
+        score++;
+      }
+    }
+
+    const pct = Math.round(score / qs.length * 100);
+    const passed = pct >= PASS_MARK;
+    const showAnswers = !SHOW_ANSWERS_ONLY_IF_PASSED || passed;
+
+    for (let i = 0; i < qs.length; i++) {
+      const letter = String.fromCharCode(65 + qs[i].answer);
+      if (right[i]) {
+        fbs[i].textContent = "✅ Correct";
+      } else if (showAnswers) {
+        fbs[i].textContent = "❌ Correct answer: " + letter + ". " +
+          qs[i].options[qs[i].answer];
+      } else {
+        fbs[i].textContent = "❌ Not correct";
+      }
+      for (let j = 0; j < labelsByQ[i].length; j++) {
+        if (showAnswers && j === qs[i].answer) {
+          labelsByQ[i][j].classList.add("right");
+        } else if (j === picked[i] && !right[i]) {
+          labelsByQ[i][j].classList.add("wrong");
+        }
+        radiosByQ[i][j].disabled = true;
+      }
+    }
+
+    submit.disabled = true;
+    clearProgress("english", set.id);
+    releaseAwake();
+    scoreEl.textContent = "Score: " + score + " / " + qs.length + " (" + pct +
+      "%) " + (passed ? "- Well done, you passed! ✅"
+        : "- Below " + PASS_MARK + "%. Go back and retake this set.");
+
+    const missed = [];
+    for (let i = 0; i < qs.length; i++) {
+      if (!right[i]) {
+        missed.push(i);
+      }
+    }
+    if (missed.length > 0 && showAnswers) {
+      const mb = document.createElement("div");
+      mb.className = "missed";
+      const h = document.createElement("h4");
+      h.textContent = "Questions you missed (" + missed.length + ")";
+      mb.appendChild(h);
+      for (let m = 0; m < missed.length; m++) {
+        const i = missed[m];
+        const p = document.createElement("p");
+        p.textContent = (i + 1) + ". " + qs[i].q + " - Correct answer: " +
+          String.fromCharCode(65 + qs[i].answer) + ". " +
+          qs[i].options[qs[i].answer];
+        mb.appendChild(p);
+      }
+      scoreEl.after(mb);
+    }
+
+    await db.from("english_results").insert({
+      set_id: set.id,
+      score: score,
+      total: qs.length
+    });
+  });
 }
 async function checkSession() {
   const result = await db.auth.getSession();
