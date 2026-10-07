@@ -149,3 +149,7 @@ input[type="radio"] {
     margin: 0 auto;
   }
 }
+.thumb {
+  margin: 4px;
+  border-radius: 6px;
+}

@@ -111,7 +111,7 @@
 
   <div id="jssNotes">
     <h2>Upload a photo</h2>
-    <input type="file" accept="image/*" id="photo">
+   <input type="file" accept="image/*" id="photo" multiple>
     <br><br>
     <select id="uploadKind">
   <option>Notes</option>
@@ -121,7 +121,7 @@
 <br><br>
 <input id="uploadDesc" placeholder="Short note (optional)">
 <br><br>
-    <img id="preview" width="200">
+    <div id="previews"></div>
     <br><br>
     <button id="uploadBtn">Upload note</button>
     <p id="uploadMsg"></p>
@@ -131,7 +131,6 @@
     <h2>Topic you are treating</h2>
     <select id="topicSubject">
       <option value="">Select subject</option>
-      <option>English</option>
       <option>Mathematics</option>
       <option>Physics</option>
       <option>Chemistry</option>
@@ -225,7 +224,7 @@ document.getElementById("goLogin").addEventListener("click", function () {
 function showWelcome(user) {
   const m = user.user_metadata;
   const jambOnly = m.jamb === true;
-
+  myId = user.id;
   const regular = document.querySelectorAll(".regularBtn");
   for (let i = 0; i < regular.length; i++) {
     regular[i].classList.toggle("hidden", jambOnly);
@@ -343,9 +342,16 @@ document.getElementById("loginBtn").addEventListener("click", async function () 
     const preview = document.getElementById("preview");
 
     photo.addEventListener("change", function () {
-      preview.src = URL.createObjectURL(photo.files[0]);
-    });
-
+  const box = document.getElementById("previews");
+  box.innerHTML = "";
+  for (let i = 0; i < photo.files.length; i++) {
+    const img = document.createElement("img");
+    img.src = URL.createObjectURL(photo.files[i]);
+    img.width = 90;
+    img.className = "thumb";
+    box.appendChild(img);
+  }
+});
     document.getElementById("logout").addEventListener("click", async function () {
   await db.auth.signOut();
   showScreen("welcomePage");
@@ -566,47 +572,96 @@ for (let i = 0; i < eyes.length; i++) {
   });
 }
 
-document.getElementById("uploadBtn").addEventListener("click", async function () {
-  const msg = document.getElementById("uploadMsg");
-  const file = photo.files[0];
+function shrinkImage(file) {
+  return new Promise(function (resolve) {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = function () {
+      const max = 1600;
+      let w = img.width;
+      let h = img.height;
+      if (w > max || h > max) {
+        const scale = max / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      canvas.toBlob(function (blob) {
+        URL.revokeObjectURL(url);
+        resolve(blob || file);
+      }, "image/jpeg", 0.8);
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
 
-  if (!file) {
-    msg.innerText = "Please choose a photo first.";
+document.getElementById("uploadBtn").addEventListener("click", async function () {
+  const btn = this;
+  const msg = document.getElementById("uploadMsg");
+  const files = Array.from(photo.files);
+
+  if (files.length === 0) {
+    msg.innerText = "Please choose at least one photo first.";
+    return;
+  }
+  if (files.length > 10) {
+    msg.innerText = "Choose up to 10 photos at a time.";
     return;
   }
 
   const userResult = await db.auth.getUser();
   const user = userResult.data.user;
   const m = user.user_metadata;
+  const kind = document.getElementById("uploadKind").value;
+  const desc = document.getElementById("uploadDesc").value.trim();
 
-  const ext = file.name.split(".").pop();
-  const path = user.id + "/" + Date.now() + "." + ext;
+  btn.disabled = true;
+  let done = 0;
+  for (let i = 0; i < files.length; i++) {
+    msg.innerText = "Uploading " + (i + 1) + " of " + files.length + "...";
+    const out = await shrinkImage(files[i]);
+    const shrunk = out !== files[i];
+    const ext = shrunk ? "jpg" : files[i].name.split(".").pop();
+    const path = user.id + "/" + Date.now() + "_" + i + "." + ext;
 
-  msg.innerText = "Uploading...";
-  const up = await db.storage.from("notes").upload(path, file);
-  if (up.error) {
-    msg.innerText = "Upload failed: " + up.error.message;
-    return;
+    const up = await db.storage.from("notes").upload(path, out);
+    if (up.error) {
+      msg.innerText = "Upload failed on photo " + (i + 1) + ": " +
+        up.error.message + " (" + done + " uploaded)";
+      btn.disabled = false;
+      return;
+    }
+
+    const save = await db.from("notes").insert({
+      username: user.email.split("@")[0],
+      student_name: m.name,
+      school: m.school,
+      class: m.studentClass,
+      file_path: path,
+      kind: kind,
+      description: desc
+    });
+    if (save.error) {
+      msg.innerText = "Saved photo " + (i + 1) + " but not its details: " +
+        save.error.message;
+      btn.disabled = false;
+      return;
+    }
+    done++;
   }
 
-  const save = await db.from("notes").insert({
-    username: user.email.split("@")[0],
-    student_name: m.name,
-    school: m.school,
-    class: m.studentClass,
-    file_path: path,
-    kind: document.getElementById("uploadKind").value,
-    description: document.getElementById("uploadDesc").value.trim()
-  });
-  if (save.error) {
-    msg.innerText = "Saved the photo but not its details: " + save.error.message;
-    return;
-  }
-
-  msg.innerText = "Note uploaded!";
+  msg.innerText = done + (done === 1 ? " photo" : " photos") + " uploaded!";
   photo.value = "";
   document.getElementById("uploadDesc").value = "";
-  preview.removeAttribute("src");
+  document.getElementById("previews").innerHTML = "";
+  btn.disabled = false;
 });
 
 document.getElementById("topicBtn").addEventListener("click", async function () {
@@ -729,10 +784,16 @@ async function loadQuizzes() {
 }
 
 function openQuiz(quiz) {
+  const saved = loadProgress("quiz", quiz.id, quiz.questions.length);
+  const order = saved ? saved.order : shuffle(quiz.questions.map(function (q, i) {
+    return i;
+  }));
   currentQuiz = {
     id: quiz.id,
     title: quiz.title,
-    questions: shuffle(quiz.questions.slice())
+    questions: order.map(function (i) {
+      return quiz.questions[i];
+    })
   };
   const oldMissed = document.getElementById("missedBox");
   if (oldMissed) {
@@ -770,7 +831,10 @@ function openQuiz(quiz) {
     fb.className = "feedback";
     box.appendChild(fb);
   }
+  restoreProgress("quiz", quiz.id, order, "q");
+  keepAwake();
 }
+
 
 document.getElementById("submitQuiz").addEventListener("click", async function () {
   if (!currentQuiz) {
@@ -820,6 +884,8 @@ document.getElementById("submitQuiz").addEventListener("click", async function (
   }
 
   this.disabled = true;
+  clearProgress("quiz", currentQuiz.id);
+  releaseAwake();
   document.getElementById("quizScore").textContent =
     "Score: " + score + " / " + qs.length + " (" + pct + "%) " +
     (passed ? "- Well done, you passed! ✅"
@@ -856,6 +922,10 @@ document.getElementById("submitQuiz").addEventListener("click", async function (
 });
 
 document.getElementById("backQuiz").addEventListener("click", function () {
+  if (currentQuiz) {
+    clearProgress("quiz", currentQuiz.id);
+  }
+  releaseAwake();
   document.getElementById("quizTake").classList.add("hidden");
   document.getElementById("quizList").classList.remove("hidden");
   loadQuizzes();
@@ -1217,6 +1287,95 @@ function openJambQuiz(quiz, box, dept) {
       total: qs.length
     });
   });
+}
+let myId = "";
+let wakeLock = null;
+let quizOpen = false;
+
+async function keepAwake() {
+  quizOpen = true;
+  try {
+    if ("wakeLock" in navigator) {
+      wakeLock = await navigator.wakeLock.request("screen");
+    }
+  } catch (e) {}
+}
+
+function releaseAwake() {
+  quizOpen = false;
+  try {
+    if (wakeLock) {
+      wakeLock.release();
+      wakeLock = null;
+    }
+  } catch (e) {}
+}
+
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible" && quizOpen) {
+    keepAwake();
+  }
+});
+
+function progressKey(kind, id) {
+  return "progress_" + myId + "_" + kind + "_" + id;
+}
+
+function loadProgress(kind, id, count) {
+  try {
+    const raw = localStorage.getItem(progressKey(kind, id));
+    if (!raw) {
+      return null;
+    }
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data.order) || data.order.length !== count) {
+      return null;
+    }
+    return data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveProgress(kind, id, order, prefix) {
+  try {
+    const picks = {};
+    for (let i = 0; i < order.length; i++) {
+      const c = document.querySelector("input[name='" + prefix + i + "']:checked");
+      if (c) {
+        picks[i] = Number(c.value);
+      }
+    }
+    localStorage.setItem(progressKey(kind, id),
+      JSON.stringify({ order: order, picks: picks }));
+  } catch (e) {}
+}
+
+function clearProgress(kind, id) {
+  try {
+    localStorage.removeItem(progressKey(kind, id));
+  } catch (e) {}
+}
+
+function restoreProgress(kind, id, order, prefix) {
+  const data = loadProgress(kind, id, order.length);
+  if (data) {
+    for (const i in data.picks) {
+      const radios = document.getElementsByName(prefix + i);
+      for (let j = 0; j < radios.length; j++) {
+        if (Number(radios[j].value) === data.picks[i]) {
+          radios[j].checked = true;
+        }
+      }
+    }
+  }
+  const all = document.querySelectorAll("input[name^='" + prefix + "']");
+  for (let k = 0; k < all.length; k++) {
+    all[k].addEventListener("change", function () {
+      saveProgress(kind, id, order, prefix);
+    });
+  }
+  saveProgress(kind, id, order, prefix);
 }
 async function checkSession() {
   const result = await db.auth.getSession();

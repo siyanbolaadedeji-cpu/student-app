@@ -37,6 +37,8 @@
   <button id="showNotes">Uploads</button>
   <button id="showTopics">SS Topics</button>
   <button id="showResults">Results</button>
+  <button id="showQuizzes">Quizzes</button>
+  <button id="showEnglish">English</button>
   <button id="showStudents">Students</button>
   <button id="showJamb">JAMB</button>
 
@@ -60,6 +62,26 @@
   </div>
 <input id="searchBox" class="hidden" placeholder="Search student name">
   <br><br>
+  <div id="englishPanel" class="group hidden">
+    <h3>English Daily</h3>
+    <button id="eSets">Scheduled sets</button>
+    <button id="eRes">English results</button>
+    <hr>
+    <select id="eAudience">
+      <option value="All">All regular students</option>
+      <option value="JSS">JSS only</option>
+      <option value="SS">SS only</option>
+    </select>
+    <br><br>
+    <input id="eDate" type="date">
+    <br><br>
+    <input id="eTitle" placeholder="Title, e.g. English Daily: Lexis 1">
+    <br><br>
+    <textarea id="eJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
+    <br><br>
+    <button id="eSend">Schedule</button>
+    <p id="eMsg"></p>
+  </div>
   <div id="jambPanel" class="group hidden">
     <button id="jSubs" onclick="loadSubscribers()">Subscribers</button>
     <button id="jRes" onclick="loadJambResults()">JAMB Results</button>
@@ -428,73 +450,87 @@ document.getElementById("searchBox").classList.add("hidden");
 }
 
   async function loadResults() {
-    const box = document.getElementById("adminList");
-    box.textContent = "Loading...";
-    const res = await db.from("quiz_results")
-      .select("score, total, created_at, student_id, quizzes(title, student_name, school, class)")
-      .order("created_at", { ascending: true });
-    box.innerHTML = "";
-    if (res.error) {
-      box.textContent = res.error.message;
-      return;
-    }
-    if (res.data.length === 0) {
-      box.textContent = "No results yet.";
-      return;
-    }
-
-    const groups = {};
-    for (let i = 0; i < res.data.length; i++) {
-      const r = res.data[i];
-      const qz = r.quizzes || {};
-      const key = (qz.school || "Unknown school") + " - " + (qz.class || "");
-      const name = qz.student_name || r.student_id.slice(0, 8);
-      if (!groups[key]) {
-        groups[key] = {};
-      }
-      if (!groups[key][r.student_id]) {
-        groups[key][r.student_id] = { name: name, rows: [] };
-      }
-      groups[key][r.student_id].rows.push({
-        title: qz.title || "Quiz",
-        score: r.score,
-        total: r.total,
-        date: new Date(r.created_at).toLocaleDateString()
-      });
-    }
-
-    const keys = Object.keys(groups).sort();
-    for (let k = 0; k < keys.length; k++) {
-      const div = document.createElement("div");
-      div.className = "group";
-      const h = document.createElement("h3");
-      h.textContent = keys[k];
-      div.appendChild(h);
-
-      const ids = Object.keys(groups[keys[k]]);
-      for (let s = 0; s < ids.length; s++) {
-        const st = groups[keys[k]][ids[s]];
-        let sum = 0;
-        for (let i = 0; i < st.rows.length; i++) {
-          sum += st.rows[i].score / st.rows[i].total * 100;
-        }
-        const avg = Math.round(sum / st.rows.length);
-
-        const head = document.createElement("h4");
-        head.textContent = st.name + " - average " + avg + "% (" +
-          st.rows.length + " attempts)";
-        div.appendChild(head);
-
-        for (let i = 0; i < st.rows.length; i++) {
-          const p = document.createElement("p");
-          p.textContent = st.rows[i].date + ": " + st.rows[i].title +
-            " - " + st.rows[i].score + "/" + st.rows[i].total;
-          div.appendChild(p);
-        }
-      }
-      box.appendChild(div);
-    }
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("quiz_results")
+    .select("quiz_id, score, total, created_at, student_id, quizzes(title, student_name, school, class)")
+    .order("created_at", { ascending: false });
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
   }
+  if (res.data.length === 0) {
+    box.textContent = "No results yet.";
+    return;
+  }
+
+  const groups = {};
+  for (let i = 0; i < res.data.length; i++) {
+    const r = res.data[i];
+    const qz = r.quizzes || {};
+    const key = (qz.school || "Unknown school") + " - " + (qz.class || "");
+    const name = qz.student_name || r.student_id.slice(0, 8);
+    if (!groups[key]) {
+      groups[key] = {};
+    }
+    if (!groups[key][r.student_id]) {
+      groups[key][r.student_id] = { name: name, rows: [] };
+    }
+    groups[key][r.student_id].rows.push({
+      quizId: r.quiz_id,
+      title: qz.title || "Quiz",
+      score: r.score,
+      total: r.total,
+      date: new Date(r.created_at).toLocaleDateString()
+    });
+  }
+
+  const keys = Object.keys(groups).sort();
+  for (let k = 0; k < keys.length; k++) {
+    const ids = Object.keys(groups[keys[k]]);
+    const classBox = document.createElement("details");
+    classBox.className = "group";
+    const classHead = document.createElement("summary");
+    classHead.textContent = keys[k] + " (" + ids.length + " students)";
+    classBox.appendChild(classHead);
+
+    for (let s = 0; s < ids.length; s++) {
+      const st = groups[keys[k]][ids[s]];
+      const best = {};
+      for (let i = 0; i < st.rows.length; i++) {
+        const pct = st.rows[i].score / st.rows[i].total * 100;
+        const q = st.rows[i].quizId;
+        if (best[q] === undefined || pct > best[q]) {
+          best[q] = pct;
+        }
+      }
+      const quizIds = Object.keys(best);
+      let sum = 0;
+      for (let i = 0; i < quizIds.length; i++) {
+        sum += best[quizIds[i]];
+      }
+      const avg = Math.round(sum / quizIds.length);
+
+      const stBox = document.createElement("details");
+      stBox.className = "student item";
+      stBox.dataset.name = st.name.toLowerCase();
+      const stHead = document.createElement("summary");
+      stHead.textContent = st.name + " - average " + avg + "% (" +
+        quizIds.length + " quizzes, " + st.rows.length + " attempts)";
+      stBox.appendChild(stHead);
+
+      for (let i = 0; i < st.rows.length; i++) {
+        const p = document.createElement("p");
+        p.textContent = st.rows[i].date + ": " + st.rows[i].title +
+          " - " + st.rows[i].score + "/" + st.rows[i].total;
+        stBox.appendChild(p);
+      }
+      classBox.appendChild(stBox);
+    }
+    box.appendChild(classBox);
+  }
+}
 
   function updateWaLink() {
     const note = document.getElementById("msgText").value.trim();
@@ -584,13 +620,14 @@ function filterList() {
 
 document.getElementById("searchBox").addEventListener("input", filterList);
 
-const menuBtns = ["showNotes", "showTopics", "showResults", "showStudents"];
+const menuBtns = ["showNotes", "showTopics", "showResults", "showStudents", "showQuizzes"];
 for (let i = 0; i < menuBtns.length; i++) {
   document.getElementById(menuBtns[i]).addEventListener("click", function () {
     const box = document.getElementById("searchBox");
     box.value = "";
-    box.classList.toggle("hidden", menuBtns[i] === "showResults");
+    box.classList.remove("hidden");
     document.getElementById("jambPanel").classList.add("hidden");
+    document.getElementById("englishPanel").classList.add("hidden");
   });
 }
 function randomPin() {
@@ -635,6 +672,7 @@ document.getElementById("showJamb").addEventListener("click", function () {
   document.getElementById("searchBox").classList.add("hidden");
   document.getElementById("pinOut").textContent = "";
   loadSubscribers();
+  document.getElementById("englishPanel").classList.add("hidden");
 });
 
 document.getElementById("makePin").addEventListener("click", async function () {
@@ -1004,6 +1042,283 @@ async function loadJambQuizzes() {
       div.appendChild(p);
     }
     box.appendChild(div);
+  }
+}
+document.getElementById("showQuizzes").addEventListener("click", loadSentQuizzes);
+
+async function loadSentQuizzes() {
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("quizzes")
+    .select("id, student_id, student_name, school, class, title, questions, created_at")
+    .order("created_at", { ascending: false });
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
+  }
+  if (res.data.length === 0) {
+    box.textContent = "No quizzes sent yet.";
+    return;
+  }
+
+  const groups = {};
+  for (let i = 0; i < res.data.length; i++) {
+    const q = res.data[i];
+    const key = (q.school || "Unknown school") + " - " + (q.class || "");
+    if (!groups[key]) {
+      groups[key] = {};
+    }
+    if (!groups[key][q.student_id]) {
+      groups[key][q.student_id] = {
+        name: q.student_name || q.student_id.slice(0, 8),
+        rows: []
+      };
+    }
+    groups[key][q.student_id].rows.push(q);
+  }
+
+  const keys = Object.keys(groups).sort();
+  for (let k = 0; k < keys.length; k++) {
+    const ids = Object.keys(groups[keys[k]]);
+    const classBox = document.createElement("details");
+    classBox.className = "group";
+    const classHead = document.createElement("summary");
+    classHead.textContent = keys[k] + " (" + ids.length + " students)";
+    classBox.appendChild(classHead);
+
+    for (let s = 0; s < ids.length; s++) {
+      const st = groups[keys[k]][ids[s]];
+      const stBox = document.createElement("details");
+      stBox.className = "student item";
+      stBox.dataset.name = st.name.toLowerCase();
+      const stHead = document.createElement("summary");
+      stHead.textContent = st.name + " - " + st.rows.length + " quizzes";
+      stBox.appendChild(stHead);
+
+      for (let i = 0; i < st.rows.length; i++) {
+        const q = st.rows[i];
+        const p = document.createElement("p");
+        p.textContent = new Date(q.created_at).toLocaleDateString() + " - " +
+          q.title + " (" + q.questions.length + " questions) ";
+        const del = document.createElement("button");
+        del.className = "delBtn";
+        del.textContent = "Delete";
+        del.addEventListener("click", async function () {
+          if (!confirm("Delete this quiz? The student's scores for it will be deleted too.")) {
+            return;
+          }
+          const r = await db.from("quizzes").delete().eq("id", q.id).select();
+          if (r.error || !r.data || r.data.length === 0) {
+            alert("Could not delete the quiz.");
+            return;
+          }
+          p.remove();
+        });
+        p.appendChild(del);
+        stBox.appendChild(p);
+      }
+      classBox.appendChild(stBox);
+    }
+    box.appendChild(classBox);
+  }
+}
+document.getElementById("showEnglish").addEventListener("click", function () {
+  document.getElementById("englishPanel").classList.remove("hidden");
+  document.getElementById("jambPanel").classList.add("hidden");
+  const sb = document.getElementById("searchBox");
+  sb.value = "";
+  sb.classList.remove("hidden");
+  document.getElementById("eDate").value = new Date().toLocaleDateString("en-CA");
+  document.getElementById("eMsg").textContent = "";
+  loadEnglishSets();
+});
+
+document.getElementById("eSets").addEventListener("click", loadEnglishSets);
+document.getElementById("eRes").addEventListener("click", loadEnglishResults);
+
+document.getElementById("eSend").addEventListener("click", async function () {
+  const msg = document.getElementById("eMsg");
+  const title = document.getElementById("eTitle").value.trim();
+  const date = document.getElementById("eDate").value;
+  const parsed = parseQuestions(document.getElementById("eJson").value.trim());
+
+  if (title === "" || date === "") {
+    msg.textContent = "Add a title and a release date.";
+    return;
+  }
+  if (parsed.error) {
+    msg.textContent = parsed.error;
+    return;
+  }
+
+  msg.textContent = "Scheduling...";
+  const res = await db.from("english_sets").insert({
+    publish_date: date,
+    audience: document.getElementById("eAudience").value,
+    title: title,
+    questions: parsed.questions
+  });
+  if (res.error) {
+    msg.textContent = "Could not schedule: " + res.error.message;
+    return;
+  }
+  msg.textContent = "Scheduled for " + date + "! (" + parsed.questions.length + " questions)";
+  document.getElementById("eJson").value = "";
+  document.getElementById("eTitle").value = "";
+  loadEnglishSets();
+});
+
+async function loadEnglishSets() {
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("english_sets")
+    .select("id, publish_date, audience, title, questions")
+    .order("publish_date", { ascending: false });
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
+  }
+  if (res.data.length === 0) {
+    box.textContent = "No English sets yet.";
+    return;
+  }
+
+  const today = new Date().toLocaleDateString("en-CA");
+  const parts = [
+    { name: "Upcoming", rows: [] },
+    { name: "Published", rows: [] }
+  ];
+  for (let i = 0; i < res.data.length; i++) {
+    const s = res.data[i];
+    parts[s.publish_date > today ? 0 : 1].rows.push(s);
+  }
+
+  for (let g = 0; g < parts.length; g++) {
+    const div = document.createElement("div");
+    div.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = parts[g].name + " (" + parts[g].rows.length + ")";
+    div.appendChild(h);
+    for (let i = 0; i < parts[g].rows.length; i++) {
+      const s = parts[g].rows[i];
+      const p = document.createElement("p");
+      p.textContent = s.publish_date + " - " + s.audience + " - " + s.title +
+        " (" + s.questions.length + " questions) ";
+      const del = document.createElement("button");
+      del.className = "delBtn";
+      del.textContent = "Delete";
+      del.addEventListener("click", async function () {
+        if (!confirm("Delete this set? Students' scores for it will be deleted too.")) {
+          return;
+        }
+        const r = await db.from("english_sets").delete().eq("id", s.id).select();
+        if (r.error || !r.data || r.data.length === 0) {
+          alert("Could not delete the set.");
+          return;
+        }
+        p.remove();
+      });
+      p.appendChild(del);
+      div.appendChild(p);
+    }
+    box.appendChild(div);
+  }
+}
+
+async function loadEnglishResults() {
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("english_results")
+    .select("set_id, score, total, created_at, student_id, english_sets(title, publish_date)")
+    .order("created_at", { ascending: false });
+  const prof = await db.from("profiles")
+    .select("user_id, student_name, username, school, class");
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
+  }
+  if (res.data.length === 0) {
+    box.textContent = "No English results yet.";
+    return;
+  }
+
+  const info = {};
+  if (prof.data) {
+    for (let i = 0; i < prof.data.length; i++) {
+      const p = prof.data[i];
+      info[p.user_id] = {
+        name: p.student_name + " (" + p.username + ")",
+        key: p.school + " - " + p.class
+      };
+    }
+  }
+
+  const groups = {};
+  for (let i = 0; i < res.data.length; i++) {
+    const r = res.data[i];
+    const who = info[r.student_id] || { name: r.student_id.slice(0, 8), key: "Unknown" };
+    const st = r.english_sets || {};
+    if (!groups[who.key]) {
+      groups[who.key] = {};
+    }
+    if (!groups[who.key][r.student_id]) {
+      groups[who.key][r.student_id] = { name: who.name, rows: [] };
+    }
+    groups[who.key][r.student_id].rows.push({
+      setId: r.set_id,
+      title: st.title || "English",
+      score: r.score,
+      total: r.total,
+      date: new Date(r.created_at).toLocaleDateString()
+    });
+  }
+
+  const keys = Object.keys(groups).sort();
+  for (let k = 0; k < keys.length; k++) {
+    const ids = Object.keys(groups[keys[k]]);
+    const classBox = document.createElement("details");
+    classBox.className = "group";
+    const classHead = document.createElement("summary");
+    classHead.textContent = keys[k] + " (" + ids.length + " students)";
+    classBox.appendChild(classHead);
+
+    for (let s = 0; s < ids.length; s++) {
+      const st = groups[keys[k]][ids[s]];
+      const best = {};
+      for (let i = 0; i < st.rows.length; i++) {
+        const pct = st.rows[i].score / st.rows[i].total * 100;
+        const q = st.rows[i].setId;
+        if (best[q] === undefined || pct > best[q]) {
+          best[q] = pct;
+        }
+      }
+      const setIds = Object.keys(best);
+      let sum = 0;
+      for (let i = 0; i < setIds.length; i++) {
+        sum += best[setIds[i]];
+      }
+
+      const stBox = document.createElement("details");
+      stBox.className = "student item";
+      stBox.dataset.name = st.name.toLowerCase();
+      const stHead = document.createElement("summary");
+      stHead.textContent = st.name + " - average " +
+        Math.round(sum / setIds.length) + "% (" + setIds.length + " sets, " +
+        st.rows.length + " attempts)";
+      stBox.appendChild(stHead);
+
+      for (let i = 0; i < st.rows.length; i++) {
+        const p = document.createElement("p");
+        p.textContent = st.rows[i].date + ": " + st.rows[i].title +
+          " - " + st.rows[i].score + "/" + st.rows[i].total;
+        stBox.appendChild(p);
+      }
+      classBox.appendChild(stBox);
+    }
+    box.appendChild(classBox);
   }
 }
   async function checkAdminSession() {
