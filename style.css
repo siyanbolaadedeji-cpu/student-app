@@ -143,3 +143,9 @@ input[type="radio"] {
   padding: 10px;
   border-radius: 10px;
 }
+@media (min-width: 800px) {
+  body {
+    max-width: 700px;
+    margin: 0 auto;
+  }
+}
