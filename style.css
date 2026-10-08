@@ -147,3 +147,10 @@ input[type="radio"] {
   margin: 5px;
   width: 44%;
 }
+.menuRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px 0;
+}
