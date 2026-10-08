@@ -161,3 +161,12 @@ input[type="radio"] {
   border-radius: 8px;
   background: white;
 }
+.badge {
+  background: crimson;
+  color: white;
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: 8px;
+  font-size: 14px;
+  font-weight: bold;
+}

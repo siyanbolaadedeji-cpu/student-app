@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ACE Academy Admin</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=4">
   <style>
     .group { text-align: left; margin: 10px; padding: 10px;
              background: white; border-radius: 10px; }
@@ -16,6 +16,8 @@
              summary { cursor: pointer; font-weight: bold; padding: 8px 0; }
     .student { margin-left: 8px; border-top: 1px solid #ddd; }
     .pinOut { font-size: 22px; font-weight: bold; word-break: break-all; margin: 8px 0; }
+    #adminMenu button { display: block; width: 80%; max-width: 320px; margin: 10px auto; }
+    #backMenu { margin: 10px; }
   </style>
 </head>
 <body>
@@ -31,16 +33,21 @@
 </div>
 
 <div id="adminHome" class="screen hidden">
-  <h1>ACE Academy Admin</h1>
-  <button id="adminLogout">Log out</button>
-  <br><br>
-  <button id="showNotes">Uploads</button>
-  <button id="showTopics">SS Topics</button>
-  <button id="showResults">Results</button>
-  <button id="showQuizzes">Quizzes</button>
-  <button id="showEnglish">English</button>
-  <button id="showStudents">Students</button>
-  <button id="showJamb">JAMB</button>
+  <div id="adminMenu">
+    <h1>ACE Academy Admin</h1>
+    <button id="showNotes">Uploads</button>
+    <button id="showTopics">SS Topics</button>
+    <button id="showResults">Results</button>
+    <button id="showStudents">Students</button>
+    <button id="showQuizzes">Quizzes</button>
+    <button id="showEnglish">English Daily</button>
+    <button id="showJamb">JAMB</button>
+    <button id="adminLogout">Log out</button>
+  </div>
+
+  <div id="adminView" class="hidden">
+    <button id="backMenu">← Back to menu</button>
+    <h2 id="viewTitle"></h2>
 
   <div id="quizForm" class="group hidden">
     <h3 id="quizFor"></h3>
@@ -152,6 +159,7 @@
       return;
     }
     showAdmin(true);
+    refreshBadges();
     document.getElementById("adminList").textContent =
       "Tap Uploads, SS Topics, Results or Students to see them.";
   }
@@ -1481,6 +1489,142 @@ function makeDiagramTool(box) {
 const quizDia = makeDiagramTool(document.getElementById("quizDia"));
 const jqDia = makeDiagramTool(document.getElementById("jqDia"));
 const eDia = makeDiagramTool(document.getElementById("eDia"));
+const viewTitles = {
+  showNotes: "Uploads",
+  showTopics: "SS Topics",
+  showResults: "Results",
+  showStudents: "Students",
+  showQuizzes: "Quizzes",
+  showEnglish: "English Daily",
+  showJamb: "JAMB"
+};
+
+function enterView(title) {
+  document.getElementById("adminMenu").classList.add("hidden");
+  document.getElementById("adminView").classList.remove("hidden");
+  document.getElementById("viewTitle").textContent = title;
+  history.pushState({ view: title }, "");
+  window.scrollTo(0, 0);
+}
+
+function goMenu() {
+  document.getElementById("adminView").classList.add("hidden");
+  document.getElementById("adminMenu").classList.remove("hidden");
+  const panels = ["quizForm", "msgBox", "jambPanel", "englishPanel"];
+  for (let i = 0; i < panels.length; i++) {
+    document.getElementById(panels[i]).classList.add("hidden");
+  }
+  document.getElementById("adminList").innerHTML = "";
+  document.getElementById("searchBox").value = "";
+  window.scrollTo(0, 0);
+  refreshBadges();
+}
+
+const menuIds = Object.keys(viewTitles);
+for (let i = 0; i < menuIds.length; i++) {
+  document.getElementById(menuIds[i]).addEventListener("click", function () {
+    enterView(viewTitles[menuIds[i]]);
+  });
+}
+
+document.getElementById("backMenu").addEventListener("click", function () {
+  history.back();
+});
+
+window.addEventListener("popstate", function () {
+  if (!document.getElementById("adminView").classList.contains("hidden")) {
+    goMenu();
+  }
+});
+const BASE_TITLE = "ACE Academy Admin";
+
+const badgeSources = {
+  showNotes: { table: "notes", key: "notes" },
+  showTopics: { table: "topics", key: "topics" },
+  showResults: { table: "quiz_results", key: "results" },
+  showStudents: { table: "profiles", key: "students" },
+  showEnglish: { table: "english_results", key: "english" }
+};
+
+function getSeen(k) {
+  const name = "adminSeen_" + k;
+  try {
+    let v = localStorage.getItem(name);
+    if (!v) {
+      v = new Date().toISOString();
+      localStorage.setItem(name, v);
+    }
+    return v;
+  } catch (e) {
+    return new Date().toISOString();
+  }
+}
+
+function markSeen(k) {
+  try {
+    localStorage.setItem("adminSeen_" + k, new Date().toISOString());
+  } catch (e) {}
+}
+
+function setBadge(btnId, n) {
+  const btn = document.getElementById(btnId);
+  let b = btn.querySelector(".badge");
+  if (!b) {
+    b = document.createElement("span");
+    b.className = "badge";
+    btn.appendChild(b);
+  }
+  b.textContent = n > 99 ? "99+" : String(n);
+  b.classList.toggle("hidden", n === 0);
+}
+
+async function refreshBadges() {
+  if (document.getElementById("adminHome").classList.contains("hidden") ||
+      document.getElementById("adminMenu").classList.contains("hidden")) {
+    return;
+  }
+  let total = 0;
+  const ids = Object.keys(badgeSources);
+  for (let i = 0; i < ids.length; i++) {
+    const s = badgeSources[ids[i]];
+    const res = await db.from(s.table)
+      .select("*", { count: "exact", head: true })
+      .gt("created_at", getSeen(s.key));
+    const n = res.error ? 0 : (res.count || 0);
+    setBadge(ids[i], n);
+    total += n;
+  }
+
+  const pend = await db.from("jamb_requests")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "pending");
+  const jr = await db.from("jamb_results")
+    .select("*", { count: "exact", head: true })
+    .gt("created_at", getSeen("jamb"));
+  const jn = (pend.error ? 0 : (pend.count || 0)) + (jr.error ? 0 : (jr.count || 0));
+  setBadge("showJamb", jn);
+  total += jn;
+
+  document.title = total > 0 ? "(" + total + ") " + BASE_TITLE : BASE_TITLE;
+}
+
+const badgeIds = Object.keys(badgeSources).concat(["showJamb"]);
+for (let i = 0; i < badgeIds.length; i++) {
+  document.getElementById(badgeIds[i]).addEventListener("click", function () {
+    const key = badgeIds[i] === "showJamb" ? "jamb" : badgeSources[badgeIds[i]].key;
+    markSeen(key);
+    if (badgeIds[i] !== "showJamb") {
+      setBadge(badgeIds[i], 0);
+    }
+  });
+}
+
+setInterval(refreshBadges, 20000);
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible") {
+    refreshBadges();
+  }
+});
   async function checkAdminSession() {
     const s = await db.auth.getSession();
     if (s.data.session) {
