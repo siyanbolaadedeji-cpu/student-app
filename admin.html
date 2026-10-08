@@ -196,11 +196,16 @@ document.getElementById("searchBox").classList.add("hidden");
   document.getElementById("showTopics").addEventListener("click", loadTopics);
   document.getElementById("showResults").addEventListener("click", loadResults);
   document.getElementById("showStudents").addEventListener("click", loadStudents);
-
+function normSchool(s) {
+  return String(s || "").trim().replace(/\s+/g, " ")
+    .toLowerCase().replace(/\b\w/g, function (c) {
+      return c.toUpperCase();
+    });
+}
   function groupBy(rows) {
     const out = {};
     for (let i = 0; i < rows.length; i++) {
-      const key = rows[i].school + " - " + rows[i].class;
+      const key = normSchool(rows[i].school) + " - " + rows[i].class;
       if (!out[key]) {
         out[key] = [];
       }
@@ -493,7 +498,7 @@ document.getElementById("searchBox").classList.add("hidden");
   for (let i = 0; i < res.data.length; i++) {
     const r = res.data[i];
     const qz = r.quizzes || {};
-    const key = (qz.school || "Unknown school") + " - " + (qz.class || "");
+    const key = normSchool(qz.school || "Unknown school") + " - " + (qz.class || "");
     const name = qz.student_name || r.student_id.slice(0, 8);
     if (!groups[key]) {
       groups[key] = {};
@@ -1063,7 +1068,7 @@ async function loadJambQuizzes() {
         const r = await db.from("jamb_quizzes").delete().eq("id", q.id).select();
         if (r.error || !r.data || r.data.length === 0) {
           alert("Could not delete the quiz: " +
-            (r.error ? r.error.message : "refused by permissions, no row was deleted"));
+            (r.error ? r.error.message : "refused by permissions, no row was deleted"));function groupBy
           return;
         }
         p.remove();
@@ -1095,7 +1100,7 @@ async function loadSentQuizzes() {
   const groups = {};
   for (let i = 0; i < res.data.length; i++) {
     const q = res.data[i];
-    const key = (q.school || "Unknown school") + " - " + (q.class || "");
+    const key = normSchool(q.school || "Unknown school") + " - " + (q.class || "");
     if (!groups[key]) {
       groups[key] = {};
     }
@@ -1286,7 +1291,7 @@ async function loadEnglishResults() {
       const p = prof.data[i];
       info[p.user_id] = {
         name: p.student_name + " (" + p.username + ")",
-        key: p.school + " - " + p.class
+        key: normSchool(p.school) + " - " + p.class
       };
     }
   }

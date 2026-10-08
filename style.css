@@ -170,7 +170,7 @@ input[type="radio"] {
   font-size: 14px;
   font-weight: bold;
 }
-#adminLogout { background-color: crimson; }
+#adminLogout { background-color: #546e7a; }
 @media (min-width: 800px) {
   body {
     max-width: 700px;

@@ -266,7 +266,9 @@ document.getElementById("registerBtn").addEventListener("click", async function 
   const username = document.getElementById("username").value.trim();
   const password = document.getElementById("password").value;
   const name = document.getElementById("name").value.trim();
-  const school = document.getElementById("school").value.trim();
+  const school = document.getElementById("school").value.trim()
+    .replace(/\s+/g, " ").toLowerCase()
+    .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   const studentClass = document.getElementById("studentClass").value;
   const gender = document.getElementById("gender").value;
   const parentPhone = cleanPhone(document.getElementById("parentPhone").value);
