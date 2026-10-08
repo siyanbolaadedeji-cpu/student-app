@@ -1062,7 +1062,8 @@ async function loadJambQuizzes() {
         }
         const r = await db.from("jamb_quizzes").delete().eq("id", q.id).select();
         if (r.error || !r.data || r.data.length === 0) {
-          alert("Could not delete the quiz.");
+          alert("Could not delete the quiz: " +
+            (r.error ? r.error.message : "refused by permissions, no row was deleted"));
           return;
         }
         p.remove();
