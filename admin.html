@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ACE Academy Admin</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
   <style>
     .group { text-align: left; margin: 10px; padding: 10px;
              background: white; border-radius: 10px; }
@@ -16,7 +16,15 @@
              summary { cursor: pointer; font-weight: bold; padding: 8px 0; }
     .student { margin-left: 8px; border-top: 1px solid #ddd; }
     .pinOut { font-size: 22px; font-weight: bold; word-break: break-all; margin: 8px 0; }
-    #adminMenu button { display: block; width: 80%; max-width: 320px; margin: 10px auto; }
+    #adminMenu {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      padding: 0 12px;
+    }
+    #adminMenu h1 { grid-column: 1 / -1; text-align: center; }
+    #adminMenu button { width: 100%; margin: 0; }
+    #showJamb, #adminLogout { grid-column: 1 / -1; }
     #backMenu { margin: 10px; }
   </style>
 </head>

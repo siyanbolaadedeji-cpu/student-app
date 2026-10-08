@@ -188,3 +188,8 @@ input[type="radio"] {
   margin-left: 20px;
   margin-right: 20px;
 }
+#englishBody button,
+#jambBody button,
+#quizTake button {
+  margin: 8px 6px;
+}
