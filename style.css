@@ -143,13 +143,7 @@ input[type="radio"] {
   padding: 10px;
   border-radius: 10px;
 }
-@media (min-width: 800px) {
-  body {
-    max-width: 700px;
-    margin: 0 auto;
-  }
-}
-.thumb {
-  margin: 4px;
-  border-radius: 6px;
+#home .menuBtn {
+  margin: 5px;
+  width: 44%;
 }
