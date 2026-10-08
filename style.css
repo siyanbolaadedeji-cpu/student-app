@@ -170,3 +170,21 @@ input[type="radio"] {
   font-size: 14px;
   font-weight: bold;
 }
+#adminLogout { background-color: crimson; }
+@media (min-width: 800px) {
+  body {
+    max-width: 700px;
+    margin: 0 auto;
+  }
+}
+
+#quizTake, #englishBody, #jambBody {
+  text-align: left;
+  max-width: 700px;
+  margin: 0 auto;
+}
+
+#quizQuestions p, #englishBody p, #jambBody p {
+  margin-left: 20px;
+  margin-right: 20px;
+}
