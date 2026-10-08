@@ -48,6 +48,7 @@
     <br><br>
     <textarea id="quizJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
     <br><br>
+    <div id="quizDia"></div>
     <button id="sendQuiz">Send quiz</button>
     <button id="cancelQuiz">Cancel</button>
     <p id="quizMsg"></p>
@@ -79,6 +80,7 @@
     <br><br>
     <textarea id="eJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
     <br><br>
+    <div id="eDia"></div>
     <button id="eSend">Schedule</button>
     <p id="eMsg"></p>
   </div>
@@ -116,6 +118,7 @@
     <br><br>
     <textarea id="jqJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
     <br><br>
+    <div id="jqDia"></div>
     <button id="sendJq">Send to department</button>
     <p id="jqMsg"></p>
   </div>
@@ -248,7 +251,11 @@ document.getElementById("searchBox").classList.add("hidden");
         return;
       }
     }
-
+   const bad = quizDia.apply(questions);
+    if (bad) {
+      msg.textContent = bad;
+      return;
+    }
     msg.textContent = "Sending...";
     const res = await db.from("quizzes").insert({
       student_id: quizStudent,
@@ -263,8 +270,9 @@ document.getElementById("searchBox").classList.add("hidden");
       return;
     }
     msg.textContent = "Quiz sent! (" + questions.length + " questions)";
+    quizDia.reset();
   });
-
+  
   async function loadNotes() {
   const box = document.getElementById("adminList");
   box.textContent = "Loading...";
@@ -737,7 +745,11 @@ document.getElementById("sendJq").addEventListener("click", async function () {
     msg.textContent = parsed.error;
     return;
   }
-
+  const badJ = jqDia.apply(parsed.questions);
+  if (badJ) {
+    msg.textContent = badJ;
+    return;
+  }
   msg.textContent = "Sending...";
   const res = await db.from("jamb_quizzes").insert({
     department: dept,
@@ -749,6 +761,7 @@ document.getElementById("sendJq").addEventListener("click", async function () {
     return;
   }
   msg.textContent = "Sent to " + dept + "! (" + parsed.questions.length + " questions)";
+  jqDia.reset();
   document.getElementById("jqJson").value = "";
 });
 
@@ -1151,7 +1164,11 @@ document.getElementById("eSend").addEventListener("click", async function () {
     msg.textContent = parsed.error;
     return;
   }
-
+  const badE = eDia.apply(parsed.questions);
+  if (badE) {
+    msg.textContent = badE;
+    return;
+  }
   msg.textContent = "Scheduling...";
   const res = await db.from("english_sets").insert({
     publish_date: date,
@@ -1164,6 +1181,7 @@ document.getElementById("eSend").addEventListener("click", async function () {
     return;
   }
   msg.textContent = "Scheduled for " + date + "! (" + parsed.questions.length + " questions)";
+  eDia.reset();
   document.getElementById("eJson").value = "";
   document.getElementById("eTitle").value = "";
   loadEnglishSets();
@@ -1321,6 +1339,148 @@ async function loadEnglishResults() {
     box.appendChild(classBox);
   }
 }
+function shrinkDiagram(file) {
+  return new Promise(function (resolve) {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = function () {
+      const max = 1400;
+      let w = img.width;
+      let h = img.height;
+      if (w > max || h > max) {
+        const scale = max / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(function (blob) {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      }, "image/jpeg", 0.85);
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    img.src = url;
+  });
+}
+
+function makeDiagramTool(box) {
+  const picks = {};
+
+  const title = document.createElement("p");
+  title.textContent = "Diagrams (optional)";
+  const num = document.createElement("input");
+  num.type = "number";
+  num.min = "1";
+  num.placeholder = "Question no.";
+  const file = document.createElement("input");
+  file.type = "file";
+  file.accept = "image/*";
+  const attach = document.createElement("button");
+  attach.textContent = "Attach diagram";
+  const msg = document.createElement("p");
+  const list = document.createElement("div");
+
+  box.appendChild(title);
+  box.appendChild(num);
+  box.appendChild(document.createElement("br"));
+  box.appendChild(document.createElement("br"));
+  box.appendChild(file);
+  box.appendChild(document.createElement("br"));
+  box.appendChild(document.createElement("br"));
+  box.appendChild(attach);
+  box.appendChild(msg);
+  box.appendChild(list);
+
+  function show() {
+    list.innerHTML = "";
+    const nums = Object.keys(picks).sort(function (a, b) {
+      return a - b;
+    });
+    for (let i = 0; i < nums.length; i++) {
+      const n = nums[i];
+      const p = document.createElement("p");
+      p.textContent = "Question " + n + ": diagram attached ";
+      const del = document.createElement("button");
+      del.className = "delBtn";
+      del.textContent = "Remove";
+      del.addEventListener("click", async function () {
+        await db.storage.from("diagrams").remove([picks[n]]);
+        delete picks[n];
+        show();
+      });
+      p.appendChild(del);
+      list.appendChild(p);
+    }
+  }
+
+  attach.addEventListener("click", async function () {
+    const n = Number(num.value);
+    if (!Number.isInteger(n) || n < 1) {
+      msg.textContent = "Type the question number first.";
+      return;
+    }
+    if (!file.files[0]) {
+      msg.textContent = "Choose an image first.";
+      return;
+    }
+    msg.textContent = "Uploading...";
+    const blob = await shrinkDiagram(file.files[0]);
+    if (!blob) {
+      msg.textContent = "Could not read that image.";
+      return;
+    }
+    const path = "q/" + Date.now() + "_" + n + ".jpg";
+    const up = await db.storage.from("diagrams")
+      .upload(path, blob, { contentType: "image/jpeg" });
+    if (up.error) {
+      msg.textContent = "Upload failed: " + up.error.message;
+      return;
+    }
+    if (picks[n]) {
+      await db.storage.from("diagrams").remove([picks[n]]);
+    }
+    picks[n] = path;
+    msg.textContent = "Attached to question " + n + ".";
+    num.value = "";
+    file.value = "";
+    show();
+  });
+
+  return {
+    apply: function (questions) {
+      for (const n in picks) {
+        if (Number(n) > questions.length) {
+          return "You attached a diagram to question " + n +
+            ", but there are only " + questions.length + " questions.";
+        }
+      }
+      for (const n in picks) {
+        questions[Number(n) - 1].img = picks[n];
+      }
+      return null;
+    },
+    reset: function () {
+      for (const n in picks) {
+        delete picks[n];
+      }
+      show();
+      msg.textContent = "";
+    }
+  };
+}
+
+const quizDia = makeDiagramTool(document.getElementById("quizDia"));
+const jqDia = makeDiagramTool(document.getElementById("jqDia"));
+const eDia = makeDiagramTool(document.getElementById("eDia"));
   async function checkAdminSession() {
     const s = await db.auth.getSession();
     if (s.data.session) {

@@ -822,6 +822,7 @@ function openQuiz(quiz) {
     const p = document.createElement("p");
     p.textContent = (i + 1) + ". " + q.q;
     box.appendChild(p);
+    addDiagram(box, q);
     for (let j = 0; j < q.options.length; j++) {
       const label = document.createElement("label");
       label.className = "opt";
@@ -1183,6 +1184,7 @@ function openJambQuiz(quiz, box, dept) {
     const p = document.createElement("p");
     p.textContent = (i + 1) + ". " + q.q;
     box.appendChild(p);
+    addDiagram(box, q);
 
     const radios = [];
     const labels = [];
@@ -1486,6 +1488,7 @@ function openEnglishQuiz(set) {
     const p = document.createElement("p");
     p.textContent = (i + 1) + ". " + q.q;
     box.appendChild(p);
+    addDiagram(box, q);
 
     const radios = [];
     const labels = [];
@@ -1604,6 +1607,25 @@ function openEnglishQuiz(set) {
       score: score,
       total: qs.length
     });
+  });
+}
+function addDiagram(parent, q) {
+  if (!q.img) {
+    return;
+  }
+  const img = document.createElement("img");
+  img.className = "qimg";
+  img.alt = "Diagram";
+  parent.appendChild(img);
+  db.storage.from("diagrams").createSignedUrl(q.img, 3600).then(function (r) {
+    if (r.data) {
+      img.src = r.data.signedUrl;
+    }
+  });
+  img.addEventListener("click", function () {
+    if (img.src) {
+      window.open(img.src, "_blank");
+    }
   });
 }
 async function checkSession() {
