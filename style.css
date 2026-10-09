@@ -193,3 +193,16 @@ input[type="radio"] {
 #quizTake button {
   margin: 8px 6px;
 }
+.chip {
+  margin: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  background: white;
+  color: #00008b;
+  border: 1px solid #00008b;
+}
+.chip.active {
+  background: #00008b;
+  color: white;
+}

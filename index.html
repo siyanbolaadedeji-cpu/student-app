@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ACE Academy</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=7">
 </head>
 <body>
 
@@ -182,7 +182,7 @@
   <div id="ttList"></div>
 </div>
 <div id="englishTab" class="tab hidden">
-    <h2>English Daily</h2>
+   <h2>Daily Quizzes</h2>
     <div id="englishBody"></div>
   </div>
 <div id="jambTab" class="tab hidden">
@@ -230,6 +230,7 @@ function showWelcome(user) {
   const m = user.user_metadata;
   const jambOnly = m.jamb === true;
   myId = user.id;
+  refreshStudentBadges();
   const regular = document.querySelectorAll(".regularBtn");
   for (let i = 0; i < regular.length; i++) {
     regular[i].classList.toggle("hidden", jambOnly);
@@ -367,9 +368,11 @@ function showTab(id) {
   const tabs = document.querySelectorAll(".tab");
   for (let i = 0; i < tabs.length; i++) {
     tabs[i].classList.add("hidden");
-    if (id === "questionsTab") {
-    loadQuizzes();
   }
+  document.getElementById(id).classList.remove("hidden");
+
+  if (id === "questionsTab") {
+    loadQuizzes();
   }
   if (id === "jambTab") {
     loadJamb();
@@ -377,7 +380,7 @@ function showTab(id) {
   if (id === "englishTab") {
     loadEnglish();
   }
-  document.getElementById(id).classList.remove("hidden");
+  markSeenTab(id);
 }
 
 const menuButtons = document.querySelectorAll(".menuBtn");
@@ -1391,22 +1394,24 @@ function restoreProgress(kind, id, order, prefix) {
 }
 const ENGLISH_RETAKE_ANY = false;
 
+let dailyFilter = "All";
+
 async function loadEnglish() {
   const box = document.getElementById("englishBody");
   box.textContent = "Loading...";
   const res = await db.from("english_sets")
-    .select("id, publish_date, title, questions")
+    .select("id, publish_date, title, subject, questions")
     .order("publish_date", { ascending: false });
   const done = await db.from("english_results")
     .select("set_id, score, total, created_at");
 
   box.innerHTML = "";
   if (res.error) {
-    box.textContent = "Could not load English Daily.";
+    box.textContent = "Could not load Daily Quizzes.";
     return;
   }
   if (res.data.length === 0) {
-    box.textContent = "No English questions yet. Check back soon.";
+    box.textContent = "No daily quizzes yet. Check back soon.";
     return;
   }
 
@@ -1435,18 +1440,48 @@ async function loadEnglish() {
   const fire = document.createElement("p");
   fire.textContent = streak > 0
     ? "🔥 " + streak + "-day streak! Keep going."
-    : "Take today's set to start a streak.";
+    : "Take today's quiz to start a streak.";
   box.appendChild(fire);
+
+  const subjects = [];
+  for (let i = 0; i < res.data.length; i++) {
+    if (subjects.indexOf(res.data[i].subject) === -1) {
+      subjects.push(res.data[i].subject);
+    }
+  }
+  subjects.sort();
+  if (dailyFilter !== "All" && subjects.indexOf(dailyFilter) === -1) {
+    dailyFilter = "All";
+  }
+
+  if (subjects.length > 1) {
+    const chips = document.createElement("div");
+    const names = ["All"].concat(subjects);
+    for (let i = 0; i < names.length; i++) {
+      const c = document.createElement("button");
+      c.className = names[i] === dailyFilter ? "chip active" : "chip";
+      c.textContent = names[i];
+      c.addEventListener("click", function () {
+        dailyFilter = names[i];
+        loadEnglish();
+      });
+      chips.appendChild(c);
+    }
+    box.appendChild(chips);
+  }
 
   const today = new Date().toLocaleDateString("en-CA");
   for (let i = 0; i < res.data.length; i++) {
     const set = res.data[i];
+    if (dailyFilter !== "All" && set.subject !== dailyFilter) {
+      continue;
+    }
     const top = best[set.id];
     const when = set.publish_date === today
       ? "Today"
       : new Date(set.publish_date + "T00:00:00").toLocaleDateString();
     const p = document.createElement("p");
-    p.textContent = when + ": " + set.title;
+    p.textContent = when + " - " + set.subject + ": " + set.title;
     if (top !== undefined) {
       p.textContent += " (best score: " + Math.round(top) + "%)";
     }
@@ -1630,6 +1665,90 @@ function addDiagram(parent, q) {
     }
   });
 }
+const badgeKinds = [
+  { kind: "quizzes", table: "quizzes", tab: "questionsTab" },
+  { kind: "daily", table: "english_sets", tab: "englishTab" },
+  { kind: "jamb", table: "jamb_quizzes", tab: "jambTab" }
+];
+
+function seenList(kind) {
+  try {
+    const raw = localStorage.getItem("seen_" + myId + "_" + kind);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveSeen(kind, ids) {
+  try {
+    localStorage.setItem("seen_" + myId + "_" + kind, JSON.stringify(ids));
+  } catch (e) {}
+}
+
+function setStudentBadge(tab, n) {
+  const btn = document.querySelector("button[data-tab='" + tab + "']");
+  if (!btn) {
+    return;
+  }
+  let b = btn.querySelector(".badge");
+  if (!b) {
+    b = document.createElement("span");
+    b.className = "badge";
+    btn.appendChild(b);
+  }
+  b.textContent = n > 99 ? "99+" : String(n);
+  b.classList.toggle("hidden", n === 0);
+}
+
+async function refreshStudentBadges() {
+  if (!myId || document.getElementById("home").classList.contains("hidden")) {
+    return;
+  }
+  for (let i = 0; i < badgeKinds.length; i++) {
+    const k = badgeKinds[i];
+    const res = await db.from(k.table).select("id");
+    if (res.error || !res.data) {
+      continue;
+    }
+    const ids = res.data.map(function (r) {
+      return r.id;
+    });
+    const seen = seenList(k.kind);
+    if (seen === null) {
+      saveSeen(k.kind, ids);
+      setStudentBadge(k.tab, 0);
+    } else {
+      const n = ids.filter(function (id) {
+        return seen.indexOf(id) === -1;
+      }).length;
+      setStudentBadge(k.tab, n);
+    }
+  }
+}
+
+async function markSeenTab(tab) {
+  for (let i = 0; i < badgeKinds.length; i++) {
+    const k = badgeKinds[i];
+    if (k.tab !== tab) {
+      continue;
+    }
+    const res = await db.from(k.table).select("id");
+    if (res.data) {
+      saveSeen(k.kind, res.data.map(function (r) {
+        return r.id;
+      }));
+    }
+    setStudentBadge(tab, 0);
+  }
+}
+
+setInterval(refreshStudentBadges, 30000);
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible") {
+    refreshStudentBadges();
+  }
+});
 async function checkSession() {
   const result = await db.auth.getSession();
   if (result.data.session) {

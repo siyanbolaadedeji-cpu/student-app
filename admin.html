@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ACE Academy Admin</title>
-  <link rel="stylesheet" href="style.css?v=7">
+  <link rel="stylesheet" href="style.css?v=8">
   <style>
     .group { text-align: left; margin: 10px; padding: 10px;
              background: white; border-radius: 10px; }
@@ -48,7 +48,7 @@
     <button id="showResults">Results</button>
     <button id="showStudents">Students</button>
     <button id="showQuizzes">Quizzes</button>
-    <button id="showEnglish">English Daily</button>
+    <button id="showEnglish">Daily Quizzes</button>
     <button id="showJamb">JAMB</button>
     <button id="adminLogout">Log out</button>
   </div>
@@ -79,19 +79,47 @@
 <input id="searchBox" class="hidden" placeholder="Search student name">
   <br><br>
   <div id="englishPanel" class="group hidden">
-    <h3>English Daily</h3>
+    <h3>Daily Quizzes</h3>
     <button id="eSets">Scheduled sets</button>
-    <button id="eRes">English results</button>
+    <button id="eRes">Daily results</button>
     <hr>
+    <select id="eSubject">
+      <option>English Language</option>
+      <option>Mathematics</option>
+      <option>Physics</option>
+      <option>Chemistry</option>
+      <option>Biology</option>
+      <option>Further Mathematics</option>
+      <option>Economics</option>
+      <option>Government</option>
+      <option>Literature in English</option>
+      <option>Commerce</option>
+      <option>Financial Accounting</option>
+      <option>Civic Education</option>
+      <option>Computer Studies</option>
+      <option>Agricultural Science</option>
+      <option>Geography</option>
+    </select>
+    <br><br>
+    <select id="eSchool">
+      <option value="">All schools</option>
+    </select>
+    <br><br>
     <select id="eAudience">
-      <option value="All">All regular students</option>
-      <option value="JSS">JSS only</option>
-      <option value="SS">SS only</option>
+      <option value="All">All classes</option>
+      <option value="JSS">All JSS</option>
+      <option value="SS">All SS</option>
+      <option value="JSS 1">JSS 1</option>
+      <option value="JSS 2">JSS 2</option>
+      <option value="JSS 3">JSS 3</option>
+      <option value="SS 1">SS 1</option>
+      <option value="SS 2">SS 2</option>
+      <option value="SS 3">SS 3</option>
     </select>
     <br><br>
     <input id="eDate" type="date">
     <br><br>
-    <input id="eTitle" placeholder="Title, e.g. English Daily: Lexis 1">
+    <input id="eTitle" placeholder="Title, e.g. Physics: Motion 1">
     <br><br>
     <textarea id="eJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
     <br><br>
@@ -1158,6 +1186,39 @@ async function loadSentQuizzes() {
     box.appendChild(classBox);
   }
 }
+function schoolKey(s) {
+  return String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function fillSchools() {
+  const sel = document.getElementById("eSchool");
+  const keep = sel.value;
+  const res = await db.from("profiles").select("school");
+  sel.innerHTML = "";
+  const all = document.createElement("option");
+  all.value = "";
+  all.textContent = "All schools";
+  sel.appendChild(all);
+
+  const seen = {};
+  if (res.data) {
+    for (let i = 0; i < res.data.length; i++) {
+      const k = schoolKey(res.data[i].school);
+      if (k && !seen[k]) {
+        seen[k] = normSchool(res.data[i].school);
+      }
+    }
+  }
+  const keys = Object.keys(seen).sort();
+  for (let i = 0; i < keys.length; i++) {
+    const o = document.createElement("option");
+    o.value = keys[i];
+    o.textContent = seen[keys[i]];
+    sel.appendChild(o);
+  }
+  sel.value = keep;
+}
+
 document.getElementById("showEnglish").addEventListener("click", function () {
   document.getElementById("englishPanel").classList.remove("hidden");
   document.getElementById("jambPanel").classList.add("hidden");
@@ -1166,6 +1227,7 @@ document.getElementById("showEnglish").addEventListener("click", function () {
   sb.classList.remove("hidden");
   document.getElementById("eDate").value = new Date().toLocaleDateString("en-CA");
   document.getElementById("eMsg").textContent = "";
+  fillSchools();
   loadEnglishSets();
 });
 
@@ -1186,15 +1248,20 @@ document.getElementById("eSend").addEventListener("click", async function () {
     msg.textContent = parsed.error;
     return;
   }
+
   const badE = eDia.apply(parsed.questions);
   if (badE) {
     msg.textContent = badE;
     return;
   }
+
   msg.textContent = "Scheduling...";
+  const school = document.getElementById("eSchool").value;
   const res = await db.from("english_sets").insert({
+    subject: document.getElementById("eSubject").value,
     publish_date: date,
     audience: document.getElementById("eAudience").value,
+    school_key: school === "" ? null : school,
     title: title,
     questions: parsed.questions
   });
@@ -1213,7 +1280,7 @@ async function loadEnglishSets() {
   const box = document.getElementById("adminList");
   box.textContent = "Loading...";
   const res = await db.from("english_sets")
-    .select("id, publish_date, audience, title, questions")
+    .select("id, publish_date, audience, title, questions, subject, school_key")
     .order("publish_date", { ascending: false });
   box.innerHTML = "";
   if (res.error) {
@@ -1244,7 +1311,9 @@ async function loadEnglishSets() {
     for (let i = 0; i < parts[g].rows.length; i++) {
       const s = parts[g].rows[i];
       const p = document.createElement("p");
-      p.textContent = s.publish_date + " - " + s.audience + " - " + s.title +
+      p.textContent = s.publish_date + " - " + s.subject + " - " +
+        (s.school_key ? normSchool(s.school_key) : "All schools") + " / " +
+        s.audience + " - " + s.title +
         " (" + s.questions.length + " questions) ";
       const del = document.createElement("button");
       del.className = "delBtn";
@@ -1509,7 +1578,7 @@ const viewTitles = {
   showResults: "Results",
   showStudents: "Students",
   showQuizzes: "Quizzes",
-  showEnglish: "English Daily",
+  showEnglish: "Daily Quizzes",
   showJamb: "JAMB"
 };
 
