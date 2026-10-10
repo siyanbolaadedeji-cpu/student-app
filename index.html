@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ACE Academy</title>
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 
@@ -1708,7 +1708,32 @@ function setStudentBadge(tab, n) {
   b.textContent = n > 99 ? "99+" : String(n);
   b.classList.toggle("hidden", n === 0);
 }
-
+async function challengeEvents() {
+  const res = await db.rpc("list_challenges");
+  if (res.error || !res.data) {
+    return null;
+  }
+  const keys = [];
+  for (let i = 0; i < res.data.length; i++) {
+    const c = res.data[i];
+    if (!c.joined) {
+      continue;
+    }
+    if (c.status === "full") {
+      keys.push(c.id + ":full");
+    }
+    if (c.status === "scheduled") {
+      keys.push(c.id + ":scheduled");
+    }
+    if (c.status === "live" && !c.submitted) {
+      keys.push(c.id + ":live");
+    }
+    if (c.status === "finished") {
+      keys.push(c.id + ":finished");
+    }
+  }
+  return keys;
+}
 async function refreshStudentBadges() {
   if (!myId || document.getElementById("home").classList.contains("hidden")) {
     return;
@@ -1733,9 +1758,32 @@ async function refreshStudentBadges() {
       setStudentBadge(k.tab, n);
     }
   }
+
+  const ev = await challengeEvents();
+  if (ev !== null) {
+    const seenC = seenList("challenge");
+    const viewing = !document.getElementById("challengeTab").classList.contains("hidden");
+    if (seenC === null || viewing) {
+      saveSeen("challenge", ev);
+      setStudentBadge("challengeTab", 0);
+    } else {
+      const n = ev.filter(function (key) {
+        return seenC.indexOf(key) === -1;
+      }).length;
+      setStudentBadge("challengeTab", n);
+    }
+  }
 }
 
 async function markSeenTab(tab) {
+  if (tab === "challengeTab") {
+    const ev = await challengeEvents();
+    if (ev !== null) {
+      saveSeen("challenge", ev);
+    }
+    setStudentBadge(tab, 0);
+    return;
+  }
   for (let i = 0; i < badgeKinds.length; i++) {
     const k = badgeKinds[i];
     if (k.tab !== tab) {
