@@ -1286,6 +1286,7 @@ document.getElementById("showEnglish").addEventListener("click", function () {
   sb.classList.remove("hidden");
   document.getElementById("eDate").value = new Date().toLocaleDateString("en-CA");
   document.getElementById("eMsg").textContent = "";
+  fillSchools();
   loadEnglishSets();
 });
 
