@@ -144,6 +144,7 @@
   </div>
   <div id="jambPanel" class="group hidden">
     <button id="jSubs" onclick="loadSubscribers()">Subscribers</button>
+    <button id="jAll">JAMB students</button>
     <button id="jRes" onclick="loadJambResults()">JAMB Results</button>
     <button id="jQz" onclick="loadJambQuizzes()">Sent quizzes</button>
     <hr>
@@ -2186,6 +2187,86 @@ document.getElementById("cSend").addEventListener("click", async function () {
   document.getElementById("cJson").value = "";
   loadChallenges();
 });
+document.getElementById("jAll").addEventListener("click", loadJambStudents);
+
+async function loadJambStudents() {
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const reqs = await db.from("jamb_requests").select("*")
+    .order("created_at", { ascending: false });
+  const acc = await db.from("jamb_access").select("user_id, expires_at");
+  box.innerHTML = "";
+  const sb = document.getElementById("searchBox");
+  sb.value = "";
+  sb.classList.remove("hidden");
+
+  if (reqs.error) {
+    box.textContent = reqs.error.message;
+    return;
+  }
+  if (reqs.data.length === 0) {
+    box.textContent = "No JAMB students yet.";
+    return;
+  }
+
+  const expires = {};
+  if (acc.data) {
+    for (let i = 0; i < acc.data.length; i++) {
+      expires[acc.data[i].user_id] = acc.data[i].expires_at;
+    }
+  }
+
+  const depts = ["Science", "Art", "Commercial"];
+  for (let d = 0; d < depts.length; d++) {
+    const list = reqs.data.filter(function (r) {
+      return r.department === depts[d];
+    });
+    const div = document.createElement("div");
+    div.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = depts[d] + " (" + list.length + ")";
+    div.appendChild(h);
+
+    for (let i = 0; i < list.length; i++) {
+      const r = list[i];
+      const name = r.username || r.user_id.slice(0, 8);
+      let status;
+      if (expires[r.user_id]) {
+        const live = new Date(expires[r.user_id]) > new Date();
+        status = (live ? "active until " : "expired ") +
+          new Date(expires[r.user_id]).toLocaleDateString();
+      } else if (r.status === "pending") {
+        status = "waiting for approval";
+      } else {
+        status = "no access";
+      }
+
+      const p = document.createElement("p");
+      p.className = "item";
+      p.dataset.name = name.toLowerCase();
+      p.textContent = name + " - " + status + " ";
+
+      const del = document.createElement("button");
+      del.className = "delBtn";
+      del.textContent = "Delete student";
+      del.addEventListener("click", async function () {
+        if (!confirm("Delete JAMB student " + name + " permanently? " +
+            "Their account, access and scores are removed.")) {
+          return;
+        }
+        const res = await db.rpc("delete_jamb_student", { p_user: r.user_id });
+        if (res.error) {
+          alert("Could not delete: " + res.error.message);
+          return;
+        }
+        p.remove();
+      });
+      p.appendChild(del);
+      div.appendChild(p);
+    }
+    box.appendChild(div);
+  }
+}
   async function checkAdminSession() {
     const s = await db.auth.getSession();
     if (s.data.session) {
