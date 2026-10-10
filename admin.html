@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ACE Academy Admin</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
   <style>
     .group { text-align: left; margin: 10px; padding: 10px;
              background: white; border-radius: 10px; }
@@ -48,6 +48,7 @@
     <button id="showResults">Results</button>
     <button id="showStudents">Students</button>
     <button id="showQuizzes">Quizzes</button>
+    <button id="showSchools">Schools</button>
     <button id="showEnglish">Daily Quizzes</button>
     <button id="showJamb">JAMB</button>
     <button id="adminLogout">Log out</button>
@@ -194,6 +195,7 @@
         "This account is not an admin.";
       return;
     }
+    await loadSchoolMap();
     showAdmin(true);
     refreshBadges();
     document.getElementById("adminList").textContent =
@@ -222,13 +224,56 @@ document.getElementById("searchBox").classList.add("hidden");
 
   document.getElementById("showNotes").addEventListener("click", loadNotes);
   document.getElementById("showTopics").addEventListener("click", loadTopics);
-  document.getElementById("showResults").addEventListener("click", loadResults);
+  =function normSchool..getElementById("showResults").addEventListener("click", loadResults);
   document.getElementById("showStudents").addEventListener("click", loadStudents);
+let schoolAlias = {};
+let schoolGroups = [];
+
+function schoolKey(s) {
+  return String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 function normSchool(s) {
-  return String(s || "").trim().replace(/\s+/g, " ")
-    .toLowerCase().replace(/\b\w/g, function (c) {
-      return c.toUpperCase();
-    });
+  const key = schoolKey(s);
+  if (schoolAlias[key]) {
+    return schoolAlias[key];
+  }
+  return key.replace(/\b\w/g, function (c) {
+    return c.toUpperCase();
+  });
+}
+
+function schoolLabel(k) {
+  if (!k) {
+    return "All schools";
+  }
+  if (k.indexOf("g:") === 0) {
+    const want = k.slice(2);
+    for (let i = 0; i < schoolGroups.length; i++) {
+      if (schoolGroups[i].toLowerCase() === want) {
+        return "Group " + schoolGroups[i];
+      }
+    }
+    return "Group " + want;
+  }
+  if (k.indexOf("s:") === 0) {
+    return normSchool(k.slice(2));
+  }
+  return normSchool(k);
+}
+
+async function loadSchoolMap() {
+  const g = await db.from("school_groups").select("name").order("name");
+  const a = await db.from("school_alias").select("alias_key, group_name");
+  schoolGroups = g.data ? g.data.map(function (x) {
+    return x.name;
+  }) : [];
+  schoolAlias = {};
+  if (a.data) {
+    for (let i = 0; i < a.data.length; i++) {
+      schoolAlias[a.data[i].alias_key] = a.data[i].group_name;
+    }
+  }
 }
   function groupBy(rows) {
     const out = {};
@@ -677,7 +722,7 @@ function filterList() {
 
 document.getElementById("searchBox").addEventListener("input", filterList);
 
-const menuBtns = ["showNotes", "showTopics", "showResults", "showStudents", "showQuizzes"];
+const menuBtns = ["showNotes", "showTopics", "showResults", "showStudents", "showQuizzes" "showSchools"];
 for (let i = 0; i < menuBtns.length; i++) {
   document.getElementById(menuBtns[i]).addEventListener("click", function () {
     const box = document.getElementById("searchBox");
@@ -1193,22 +1238,37 @@ function schoolKey(s) {
 async function fillSchools() {
   const sel = document.getElementById("eSchool");
   const keep = sel.value;
+  await loadSchoolMap();
   const res = await db.from("profiles").select("school");
   sel.innerHTML = "";
+
   const all = document.createElement("option");
   all.value = "";
   all.textContent = "All schools";
   sel.appendChild(all);
 
+  for (let i = 0; i < schoolGroups.length; i++) {
+    const o = document.createElement("option");
+    o.value = "g:" + schoolGroups[i].toLowerCase();
+    o.textContent = "Group " + schoolGroups[i];
+    sel.appendChild(o);
+  }
+
   const seen = {};
   if (res.data) {
     for (let i = 0; i < res.data.length; i++) {
       const k = schoolKey(res.data[i].school);
-      if (k && !seen[k]) {
-        seen[k] = normSchool(res.data[i].school);
+      if (k && !schoolAlias[k] && !seen[k]) {
+        seen[k] = true;
+        const o = document.createElement("option");
+        o.value = "s:" + k;
+        o.textContent = normSchool(k);
+        sel.appendChild(o);
       }
     }
   }
+  sel.value = keep;
+}
   const keys = Object.keys(seen).sort();
   for (let i = 0; i < keys.length; i++) {
     const o = document.createElement("option");
@@ -1312,7 +1372,7 @@ async function loadEnglishSets() {
       const s = parts[g].rows[i];
       const p = document.createElement("p");
       p.textContent = s.publish_date + " - " + s.subject + " - " +
-        (s.school_key ? normSchool(s.school_key) : "All schools") + " / " +
+       schoolLabel(s.school_key) + " / " +
         s.audience + " - " + s.title +
         " (" + s.questions.length + " questions) ";
       const del = document.createElement("button");
@@ -1580,6 +1640,7 @@ const viewTitles = {
   showQuizzes: "Quizzes",
   showEnglish: "Daily Quizzes",
   showJamb: "JAMB"
+  showSchools: "Schools",
 };
 
 function enterView(title) {
@@ -1708,6 +1769,159 @@ document.addEventListener("visibilitychange", function () {
     refreshBadges();
   }
 });
+document.getElementById("showSchools").addEventListener("click", loadSchools);
+
+async function loadSchools() {
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  await loadSchoolMap();
+  const prof = await db.from("profiles").select("school");
+  box.innerHTML = "";
+  if (prof.error) {
+    box.textContent = prof.error.message;
+    return;
+  }
+
+  const typed = {};
+  for (let i = 0; i < prof.data.length; i++) {
+    const raw = String(prof.data[i].school || "").trim().replace(/\s+/g, " ");
+    const k = schoolKey(raw);
+    if (!k) {
+      continue;
+    }
+    if (!typed[k]) {
+      typed[k] = { shown: raw, count: 0 };
+    }
+    typed[k].count++;
+  }
+  const keys = Object.keys(typed);
+
+  const members = {};
+  for (let i = 0; i < keys.length; i++) {
+    const g = schoolAlias[keys[i]];
+    if (g) {
+      members[g] = (members[g] || 0) + typed[keys[i]].count;
+    }
+  }
+
+  const gBox = document.createElement("div");
+  gBox.className = "group";
+  const gh = document.createElement("h3");
+  gh.textContent = "School groups (" + schoolGroups.length + ")";
+  gBox.appendChild(gh);
+
+  const gi = document.createElement("input");
+  gi.placeholder = "New group name, e.g. A";
+  gBox.appendChild(gi);
+  const gb = document.createElement("button");
+  gb.textContent = "Add group";
+  gb.addEventListener("click", async function () {
+    const name = gi.value.trim();
+    if (name === "") {
+      return;
+    }
+    const clash = schoolGroups.some(function (g) {
+      return g.toLowerCase() === name.toLowerCase();
+    });
+    if (clash) {
+      alert("That group already exists.");
+      return;
+    }
+    const r = await db.from("school_groups").insert({ name: name });
+    if (r.error) {
+      alert("Could not add: " + r.error.message);
+      return;
+    }
+    loadSchools();
+  });
+  gBox.appendChild(gb);
+
+  for (let i = 0; i < schoolGroups.length; i++) {
+    const name = schoolGroups[i];
+    const p = document.createElement("p");
+    p.textContent = name + " - " + (members[name] || 0) + " students ";
+    const del = document.createElement("button");
+    del.className = "delBtn";
+    del.textContent = "Delete";
+    del.addEventListener("click", async function () {
+      if (!confirm('Delete group "' + name + '"? Its schools become ungrouped.')) {
+        return;
+      }
+      const r = await db.from("school_groups").delete().eq("name", name);
+      if (r.error) {
+        alert("Could not delete: " + r.error.message);
+        return;
+      }
+      loadSchools();
+    });
+    p.appendChild(del);
+    gBox.appendChild(p);
+  }
+  box.appendChild(gBox);
+
+  const tBox = document.createElement("div");
+  tBox.className = "group";
+  const th = document.createElement("h3");
+  th.textContent = "Names students typed (" + keys.length + ")";
+  tBox.appendChild(th);
+
+  keys.sort(function (a, b) {
+    const ua = schoolAlias[a] ? 1 : 0;
+    const ub = schoolAlias[b] ? 1 : 0;
+    if (ua !== ub) {
+      return ua - ub;
+    }
+    return a < b ? -1 : 1;
+  });
+
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    const p = document.createElement("p");
+    const label = document.createElement("span");
+    function paint() {
+      label.textContent = (schoolAlias[k] ? "" : "⚠ ") + typed[k].shown +
+        " (" + typed[k].count + ") ";
+    }
+    paint();
+    p.appendChild(label);
+
+    const sel = document.createElement("select");
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "Not grouped";
+    sel.appendChild(none);
+    for (let j = 0; j < schoolGroups.length; j++) {
+      const o = document.createElement("option");
+      o.value = schoolGroups[j];
+      o.textContent = schoolGroups[j];
+      sel.appendChild(o);
+    }
+    sel.value = schoolAlias[k] || "";
+    sel.addEventListener("change", async function () {
+      let r;
+      if (sel.value === "") {
+        r = await db.from("school_alias").delete().eq("alias_key", k);
+      } else {
+        r = await db.from("school_alias").upsert(
+          { alias_key: k, group_name: sel.value }, { onConflict: "alias_key" });
+      }
+      if (r.error) {
+        alert("Could not save: " + r.error.message);
+        sel.value = schoolAlias[k] || "";
+        return;
+      }
+      if (sel.value === "") {
+        delete schoolAlias[k];
+      } else {
+        schoolAlias[k] = sel.value;
+      }
+      paint();
+    });
+    p.appendChild(sel);
+    tBox.appendChild(p);
+  }
+  box.appendChild(tBox);
+}
   async function checkAdminSession() {
     const s = await db.auth.getSession();
     if (s.data.session) {
