@@ -200,8 +200,9 @@
     refreshBadges();
     document.getElementById("adminList").textContent =
       "Tap Uploads, SS Topics, Results or Students to see them.";
+      document.getElementById("searchBox").classList.add("hidden");
   }
-document.getElementById("searchBox").classList.add("hidden");
+
   document.getElementById("adminLoginBtn").addEventListener("click", async function () {
     const msg = document.getElementById("adminMsg");
     msg.innerText = "Logging in...";
@@ -649,54 +650,54 @@ async function loadSchoolMap() {
   });
 
   async function loadStudents() {
-    const box = document.getElementById("adminList");
-    box.textContent = "Loading...";
-    const res = await db.from("profiles").select("*").order("student_name");
-    box.innerHTML = "";
-    if (res.error) {
-      box.textContent = res.error.message;
-      return;
-    }
-    if (res.data.length === 0) {
-      box.textContent = "No students yet.";
-      return;
-    }
-
-    const groups = groupBy(res.data);
-    const keys = Object.keys(groups).sort();
-    for (let k = 0; k < keys.length; k++) {
-      const div = document.createElement("div");
-      div.className = "group";
-      const h = document.createElement("h3");
-      h.textContent = keys[k];
-      div.appendChild(h);
-
-      const rows = groups[keys[k]];
-      for (let i = 0; i < rows.length; i++) {
-        const s = rows[i];
-        const p = document.createElement("p");
-        p.textContent = s.student_name + " (" + s.username + ") ";
-        p.className = "item";
-        p.dataset.name = (s.student_name + " " + s.username).toLowerCase();
-
-        const b = document.createElement("button");
-        b.textContent = "💬";
-        b.addEventListener("click", function () {
-          document.getElementById("msgFor").textContent =
-            "Message to the parent of " + s.student_name;
-          document.getElementById("msgText").value = "";
-          waPhone = s.parent_phone;
-          waName = s.student_name;
-          updateWaLink();
-          document.getElementById("msgBox").classList.remove("hidden");
-          document.getElementById("msgBox").scrollIntoView();
-        });
-        p.appendChild(b);
-        div.appendChild(p);
-      }
-      box.appendChild(div);
-    }
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("profiles").select("*").order("student_name");
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
   }
+  if (res.data.length === 0) {
+    box.textContent = "No students yet.";
+    return;
+  }
+
+  const groups = groupBy(res.data);
+  const keys = Object.keys(groups).sort();
+  for (let k = 0; k < keys.length; k++) {
+    const div = document.createElement("div");
+    div.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = keys[k];
+    div.appendChild(h);
+
+    const rows = groups[keys[k]];
+    for (let i = 0; i < rows.length; i++) {
+      const s = rows[i];
+      const p = document.createElement("p");
+      p.textContent = s.student_name + " (" + s.username + ") ";
+      p.className = "item";
+      p.dataset.name = (s.student_name + " " + s.username).toLowerCase();
+
+      const b = document.createElement("button");
+      b.textContent = "💬";
+      b.addEventListener("click", function () {
+        document.getElementById("msgFor").textContent =
+          "Message to the parent of " + s.student_name;
+        document.getElementById("msgText").value = "";
+        waPhone = s.parent_phone;
+        waName = s.student_name;
+        updateWaLink();
+        document.getElementById("msgBox").classList.remove("hidden");
+        document.getElementById("msgBox").scrollIntoView();
+      });
+      p.appendChild(b);
+      div.appendChild(p);
+    }
+    box.appendChild(div);
+  }
+}
 function filterList() {
   const q = document.getElementById("searchBox").value.trim().toLowerCase();
   const groups = document.querySelectorAll("#adminList .group");
@@ -722,7 +723,7 @@ function filterList() {
 
 document.getElementById("searchBox").addEventListener("input", filterList);
 
-const menuBtns = ["showNotes", "showTopics", "showResults", "showStudents", "showQuizzes" "showSchools"];
+const menuBtns = ["showNotes", "showTopics", "showResults", "showStudents", "showQuizzes", "showSchools"];
 for (let i = 0; i < menuBtns.length; i++) {
   document.getElementById(menuBtns[i]).addEventListener("click", function () {
     const box = document.getElementById("searchBox");
@@ -1267,8 +1268,6 @@ async function fillSchools() {
       }
     }
   }
-  sel.value = keep;
-}
   const keys = Object.keys(seen).sort();
   for (let i = 0; i < keys.length; i++) {
     const o = document.createElement("option");
@@ -1638,7 +1637,7 @@ const viewTitles = {
   showStudents: "Students",
   showQuizzes: "Quizzes",
   showEnglish: "Daily Quizzes",
-  showJamb: "JAMB"
+  showJamb: "JAMB",
   showSchools: "Schools",
 };
 
