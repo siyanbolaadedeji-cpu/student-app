@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ACE Academy Admin</title>
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
   <style>
     .group { text-align: left; margin: 10px; padding: 10px;
              background: white; border-radius: 10px; }
@@ -50,6 +50,7 @@
     <button id="showQuizzes">Quizzes</button>
     <button id="showSchools">Schools</button>
     <button id="showEnglish">Daily Quizzes</button>
+    <button id="showChallenges">Challenges</button>
     <button id="showJamb">JAMB</button>
     <button id="adminLogout">Log out</button>
   </div>
@@ -127,6 +128,19 @@
     <div id="eDia"></div>
     <button id="eSend">Schedule</button>
     <p id="eMsg"></p>
+  </div>
+  <div id="challengePanel" class="group hidden">
+    <h3>Schedule a challenge</h3>
+    <select id="cSelect"></select>
+    <br><br>
+    <input id="cStart" type="datetime-local">
+    <br><br>
+    <input id="cMinutes" type="number" min="1" max="120" value="15" placeholder="Minutes">
+    <br><br>
+    <textarea id="cJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
+    <br><br>
+    <button id="cSend">Schedule challenge</button>
+    <p id="cMsg"></p>
   </div>
   <div id="jambPanel" class="group hidden">
     <button id="jSubs" onclick="loadSubscribers()">Subscribers</button>
@@ -1640,6 +1654,7 @@ const viewTitles = {
   showEnglish: "Daily Quizzes",
   showJamb: "JAMB",
   showSchools: "Schools",
+  showChallenges: "Challenges",
 };
 
 function enterView(title) {
@@ -1653,7 +1668,7 @@ function enterView(title) {
 function goMenu() {
   document.getElementById("adminView").classList.add("hidden");
   document.getElementById("adminMenu").classList.remove("hidden");
-  const panels = ["quizForm", "msgBox", "jambPanel", "englishPanel"];
+  const panels = ["quizForm", "msgBox", "jambPanel", "englishPanel", "challengePanel"];
   for (let i = 0; i < panels.length; i++) {
     document.getElementById(panels[i]).classList.add("hidden");
   }
@@ -1747,7 +1762,23 @@ async function refreshBadges() {
   const jn = (pend.error ? 0 : (pend.count || 0)) + (jr.error ? 0 : (jr.count || 0));
   setBadge("showJamb", jn);
   total += jn;
-
+const cl = await db.from("challenges").select("id").is("start_at", null);
+  const cp = await db.from("challenge_players").select("challenge_id");
+  let ready = 0;
+  if (cl.data && cp.data) {
+    const counts = {};
+    for (let i = 0; i < cp.data.length; i++) {
+      const cid = cp.data[i].challenge_id;
+      counts[cid] = (counts[cid] || 0) + 1;
+    }
+    for (let i = 0; i < cl.data.length; i++) {
+      if ((counts[cl.data[i].id] || 0) >= 2) {
+        ready++;
+      }
+    }
+  }
+  setBadge("showChallenges", ready);
+  total += ready;
   document.title = total > 0 ? "(" + total + ") " + BASE_TITLE : BASE_TITLE;
 }
 
@@ -1921,6 +1952,240 @@ async function loadSchools() {
   }
   box.appendChild(tBox);
 }
+document.getElementById("showChallenges").addEventListener("click", function () {
+  document.getElementById("challengePanel").classList.remove("hidden");
+  document.getElementById("searchBox").classList.add("hidden");
+  document.getElementById("cMsg").textContent = "";
+  loadChallenges();
+});
+
+async function loadChallenges() {
+  const box = document.getElementById("adminList");
+  const sel = document.getElementById("cSelect");
+  box.textContent = "Loading...";
+  const ch = await db.from("challenges").select("*")
+    .order("created_at", { ascending: false });
+  const pl = await db.from("challenge_players")
+    .select("challenge_id, student_id, student_name");
+  const sc = await db.from("challenge_scores")
+    .select("challenge_id, student_id, score, total, submitted_at");
+  box.innerHTML = "";
+  if (ch.error) {
+    box.textContent = ch.error.message;
+    return;
+  }
+
+  const people = {};
+  if (pl.data) {
+    for (let i = 0; i < pl.data.length; i++) {
+      const p = pl.data[i];
+      if (!people[p.challenge_id]) {
+        people[p.challenge_id] = [];
+      }
+      people[p.challenge_id].push({ id: p.student_id, name: p.student_name });
+    }
+  }
+  const scores = {};
+  if (sc.data) {
+    for (let i = 0; i < sc.data.length; i++) {
+      const s = sc.data[i];
+      if (!scores[s.challenge_id]) {
+        scores[s.challenge_id] = [];
+      }
+      scores[s.challenge_id].push(s);
+    }
+  }
+
+  function nameOf(cid, sid) {
+    const list = people[cid] || [];
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].id === sid) {
+        return list[i].name;
+      }
+    }
+    return "Unknown";
+  }
+
+  const now = new Date();
+  const parts = { ready: [], waiting: [], upcoming: [], live: [], finished: [] };
+  for (let i = 0; i < ch.data.length; i++) {
+    const c = ch.data[i];
+    const n = (people[c.id] || []).length;
+    let key;
+    if (!c.start_at) {
+      key = n >= 2 ? "ready" : "waiting";
+    } else if (now < new Date(c.start_at)) {
+      key = "upcoming";
+    } else if (now <= new Date(c.end_at)) {
+      key = "live";
+    } else {
+      key = "finished";
+    }
+    parts[key].push(c);
+  }
+
+  function who(c) {
+    const list = people[c.id] || [];
+    const names = list.map(function (x) {
+      return x.name;
+    });
+    return names.length >= 2 ? names.join(" vs ") : (names[0] || "?") + " vs (waiting)";
+  }
+
+  sel.innerHTML = "";
+  if (parts.ready.length === 0) {
+    const o = document.createElement("option");
+    o.value = "";
+    o.textContent = "No challenge is ready";
+    sel.appendChild(o);
+  } else {
+    for (let i = 0; i < parts.ready.length; i++) {
+      const c = parts.ready[i];
+      const o = document.createElement("option");
+      o.value = c.id;
+      o.textContent = "#" + c.id + " " + c.subject + ": " + c.topic +
+        " (" + who(c) + ")";
+      sel.appendChild(o);
+    }
+  }
+
+  const sections = [
+    ["Ready to schedule", "ready"],
+    ["Waiting for an opponent", "waiting"],
+    ["Scheduled", "upcoming"],
+    ["Live now", "live"],
+    ["Finished", "finished"]
+  ];
+  for (let s = 0; s < sections.length; s++) {
+    const list = parts[sections[s][1]];
+    const div = document.createElement("div");
+    div.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = sections[s][0] + " (" + list.length + ")";
+    div.appendChild(h);
+
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      const p = document.createElement("p");
+      let text = "#" + c.id + " " + c.subject + ": " + c.topic + " - " + who(c);
+      if (c.start_at) {
+        text += " - " + new Date(c.start_at).toLocaleString() +
+          " (" + c.minutes + " min)";
+      }
+      p.textContent = text + " ";
+
+      if (sections[s][1] === "ready") {
+        const go = document.createElement("button");
+        go.textContent = "Schedule";
+        go.addEventListener("click", function () {
+          sel.value = String(c.id);
+          document.getElementById("challengePanel").scrollIntoView();
+        });
+        p.appendChild(go);
+      }
+
+      const del = document.createElement("button");
+      del.className = "delBtn";
+      del.textContent = "Delete";
+      del.addEventListener("click", async function () {
+        if (!confirm("Delete this challenge? Any scores are deleted too.")) {
+          return;
+        }
+        const r = await db.from("challenges").delete().eq("id", c.id).select();
+        if (r.error || !r.data || r.data.length === 0) {
+          alert("Could not delete the challenge.");
+          return;
+        }
+        loadChallenges();
+      });
+      p.appendChild(del);
+
+      if (sections[s][1] === "finished") {
+        const rows = (scores[c.id] || []).slice().sort(function (a, b) {
+          if (b.score !== a.score) {
+            return b.score - a.score;
+          }
+          return new Date(a.submitted_at) - new Date(b.submitted_at);
+        });
+        const line = document.createElement("div");
+        const strong = document.createElement("strong");
+        if (rows.length === 0) {
+          strong.textContent = "No one took it.";
+        } else {
+          let t = "🏆 Winner: " + nameOf(c.id, rows[0].student_id) +
+            " (" + rows[0].score + "/" + rows[0].total + ")";
+          if (rows.length > 1) {
+            t += " vs " + nameOf(c.id, rows[1].student_id) +
+              " (" + rows[1].score + "/" + rows[1].total + ")";
+          } else {
+            t += " - opponent did not take it";
+          }
+          strong.textContent = t;
+        }
+        line.appendChild(strong);
+        p.appendChild(line);
+      }
+      div.appendChild(p);
+    }
+    box.appendChild(div);
+  }
+}
+
+document.getElementById("cSend").addEventListener("click", async function () {
+  const msg = document.getElementById("cMsg");
+  const id = Number(document.getElementById("cSelect").value);
+  const startVal = document.getElementById("cStart").value;
+  const minutes = Number(document.getElementById("cMinutes").value);
+  const parsed = parseQuestions(document.getElementById("cJson").value.trim());
+
+  if (!id) {
+    msg.textContent = "Choose a challenge that is ready.";
+    return;
+  }
+  if (startVal === "") {
+    msg.textContent = "Choose the date and time.";
+    return;
+  }
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 120) {
+    msg.textContent = "Minutes must be between 1 and 120.";
+    return;
+  }
+  if (parsed.error) {
+    msg.textContent = parsed.error;
+    return;
+  }
+
+  const start = new Date(startVal);
+  if (start.getTime() < Date.now() + 60000) {
+    msg.textContent = "Choose a start time at least a minute from now.";
+    return;
+  }
+  const end = new Date(start.getTime() + minutes * 60000);
+
+  msg.textContent = "Scheduling...";
+  const q = await db.from("challenge_questions").upsert(
+    { challenge_id: id, questions: parsed.questions },
+    { onConflict: "challenge_id" });
+  if (q.error) {
+    msg.textContent = "Could not save the questions: " + q.error.message;
+    return;
+  }
+  const u = await db.from("challenges")
+    .update({
+      start_at: start.toISOString(),
+      end_at: end.toISOString(),
+      minutes: minutes
+    })
+    .eq("id", id).is("start_at", null).select();
+  if (u.error || !u.data || u.data.length === 0) {
+    msg.textContent = "Could not schedule. The challenge may have been cancelled.";
+    return;
+  }
+  msg.textContent = "Scheduled for " + start.toLocaleString() + "! (" +
+    parsed.questions.length + " questions)";
+  document.getElementById("cJson").value = "";
+  loadChallenges();
+});
   async function checkAdminSession() {
     const s = await db.auth.getSession();
     if (s.data.session) {
