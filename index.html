@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ACE Academy</title>
-  <link rel="stylesheet" href="style.css?v=8">
+  <link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 
@@ -107,6 +107,7 @@
   <button class="menuBtn regularBtn" data-tab="questionsTab">Questions</button>
   <button class="menuBtn regularBtn" data-tab="timetableTab">Timetable</button>
 <button class="menuBtn regularBtn" data-tab="englishTab">Daily Quizzes</button>
+<button class="menuBtn regularBtn" data-tab="challengeTab">Challenge</button>
   <button class="menuBtn jambBtn" data-tab="jambTab">JAMB</button>
   <div id="notesTab" class="tab">
 
@@ -184,6 +185,10 @@
 <div id="englishTab" class="tab hidden">
    <h2>Daily Quizzes</h2>
     <div id="englishBody"></div>
+  </div>
+  <div id="challengeTab" class="tab hidden">
+    <h2>Challenges</h2>
+    <div id="challengeBody"></div>
   </div>
 <div id="jambTab" class="tab hidden">
     <h2>JAMB</h2>
@@ -379,6 +384,9 @@ function showTab(id) {
   }
   if (id === "englishTab") {
     loadEnglish();
+  }
+  if (id === "challengeTab") {
+    loadChallengeTab();
   }
   markSeenTab(id);
 }
@@ -1749,6 +1757,333 @@ document.addEventListener("visibilitychange", function () {
     refreshStudentBadges();
   }
 });
+let challengePoll = null;
+let inChallengeQuiz = false;
+let challengeTimer = null;
+
+async function loadChallengeTab() {
+  const box = document.getElementById("challengeBody");
+  if (inChallengeQuiz) {
+    return;
+  }
+  if (box.childElementCount === 0) {
+    box.textContent = "Loading...";
+  }
+  const userRes = await db.auth.getUser();
+  const myName = userRes.data.user.user_metadata.name;
+  const res = await db.rpc("list_challenges");
+  if (inChallengeQuiz) {
+    return;
+  }
+  if (res.error) {
+    box.textContent = "Could not load challenges.";
+    return;
+  }
+  const list = res.data || [];
+  box.innerHTML = "";
+
+  const myActive = list.some(function (c) {
+    return c.joined && c.status !== "finished";
+  });
+
+  if (!myActive) {
+    const form = document.createElement("div");
+    form.className = "challengeCard";
+    const h = document.createElement("h3");
+    h.textContent = "Start a challenge";
+    form.appendChild(h);
+
+    const sel = document.createElement("select");
+    const subjects = ["", "English Language", "Mathematics", "Physics",
+      "Chemistry", "Biology", "Further Mathematics"];
+    for (let i = 0; i < subjects.length; i++) {
+      const o = document.createElement("option");
+      o.value = subjects[i];
+      o.textContent = subjects[i] === "" ? "Select subject" : subjects[i];
+      sel.appendChild(o);
+    }
+    form.appendChild(sel);
+    form.appendChild(document.createElement("br"));
+    form.appendChild(document.createElement("br"));
+
+    const topic = document.createElement("input");
+    topic.placeholder = "Topic, e.g. Quadratic equations";
+    form.appendChild(topic);
+    form.appendChild(document.createElement("br"));
+    form.appendChild(document.createElement("br"));
+
+    const msg = document.createElement("p");
+    const send = document.createElement("button");
+    send.textContent = "Send challenge";
+    send.addEventListener("click", async function () {
+      if (sel.value === "" || topic.value.trim() === "") {
+        msg.textContent = "Choose a subject and type a topic.";
+        return;
+      }
+      send.disabled = true;
+      const r = await db.rpc("create_challenge", {
+        p_subject: sel.value,
+        p_topic: topic.value.trim()
+      });
+      if (r.error) {
+        msg.textContent = r.error.message;
+        send.disabled = false;
+        return;
+      }
+      loadChallengeTab();
+    });
+    form.appendChild(send);
+    form.appendChild(msg);
+    box.appendChild(form);
+  } else {
+    const note = document.createElement("p");
+    note.textContent = "You are in an active challenge. You can join another one when it ends.";
+    box.appendChild(note);
+  }
+
+  const order = { live: 0, scheduled: 1, full: 2, open: 3, finished: 4 };
+  list.sort(function (a, b) {
+    return order[a.status] - order[b.status];
+  });
+
+  if (list.length === 0) {
+    const none = document.createElement("p");
+    none.textContent = "No challenges yet. Be the first to send one!";
+    box.appendChild(none);
+  }
+
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i];
+    const names = c.names || [];
+    const card = document.createElement("div");
+    card.className = "challengeCard";
+
+    const title = document.createElement("h4");
+    title.textContent = c.subject + ": " + c.topic;
+    card.appendChild(title);
+
+    const who = document.createElement("p");
+    who.textContent = names.length >= 2
+      ? names[0] + " vs " + names[1]
+      : names[0] + " is waiting for an opponent";
+    card.appendChild(who);
+
+    const info = document.createElement("p");
+    if (c.status === "open") {
+      info.textContent = c.joined ? "Waiting for an opponent..." : "Open - accept to play!";
+    } else if (c.status === "full") {
+      info.textContent = "Both players are in. Waiting for the start time.";
+    } else if (c.status === "scheduled") {
+      info.textContent = "Starts " + new Date(c.start_at).toLocaleString() +
+        " (" + c.minutes + " minutes)";
+    } else if (c.status === "live") {
+      info.textContent = "🔴 LIVE until " + new Date(c.end_at).toLocaleTimeString();
+    }
+    if (info.textContent !== "") {
+      card.appendChild(info);
+    }
+
+    if (c.status === "open" && !c.joined && !myActive) {
+      const acc = document.createElement("button");
+      acc.textContent = "Accept challenge";
+      acc.addEventListener("click", async function () {
+        acc.disabled = true;
+        const r = await db.rpc("join_challenge", { p_id: c.id });
+        if (r.error) {
+          alert(r.error.message);
+        }
+        loadChallengeTab();
+      });
+      card.appendChild(acc);
+    }
+
+    if ((c.status === "open" || c.status === "full") && c.joined &&
+        c.creator_name === myName) {
+      const cancel = document.createElement("button");
+      cancel.className = "delBtn";
+      cancel.textContent = "Cancel challenge";
+      cancel.addEventListener("click", async function () {
+        if (!confirm("Cancel this challenge?")) {
+          return;
+        }
+        const r = await db.rpc("cancel_challenge", { p_id: c.id });
+        if (r.error) {
+          alert(r.error.message);
+        }
+        loadChallengeTab();
+      });
+      card.appendChild(cancel);
+    }
+
+    if (c.status === "live" && c.joined && !c.submitted) {
+      const go = document.createElement("button");
+      go.textContent = "Start now";
+      go.addEventListener("click", function () {
+        openChallengeQuiz(c);
+      });
+      card.appendChild(go);
+    }
+    if (c.status === "live" && c.joined && c.submitted) {
+      const done = document.createElement("p");
+      done.textContent = "Submitted. The winner appears when time is up.";
+      card.appendChild(done);
+    }
+
+    if (c.status === "finished") {
+      const board = c.board || [];
+      const line = document.createElement("p");
+      const strong = document.createElement("strong");
+      if (board.length === 0) {
+        strong.textContent = "No one took this challenge.";
+      } else {
+        let t = "🏆 Winner: " + board[0].name + " (" + board[0].score +
+          "/" + board[0].total + ")";
+        if (board.length > 1) {
+          t += " vs " + board[1].name + " (" + board[1].score + "/" + board[1].total + ")";
+          if (board[0].score === board[1].score) {
+            t += " - same score, faster finish wins";
+          }
+        } else {
+          t += " - opponent did not take it";
+        }
+        strong.textContent = t;
+      }
+      line.appendChild(strong);
+      card.appendChild(line);
+    }
+    box.appendChild(card);
+  }
+
+  if (!challengePoll) {
+    challengePoll = setInterval(function () {
+      const tab = document.getElementById("challengeTab");
+      const home = document.getElementById("home");
+      if (tab.classList.contains("hidden") || home.classList.contains("hidden")) {
+        return;
+      }
+      loadChallengeTab();
+    }, 15000);
+  }
+}
+
+async function openChallengeQuiz(c) {
+  const box = document.getElementById("challengeBody");
+  const res = await db.rpc("start_challenge", { p_id: c.id });
+  if (res.error) {
+    alert(res.error.message);
+    loadChallengeTab();
+    return;
+  }
+  const data = res.data;
+  const questions = data.questions || [];
+  const offset = new Date(data.server_now).getTime() - Date.now();
+  const endsAt = new Date(data.ends_at).getTime();
+
+  inChallengeQuiz = true;
+  keepAwake();
+  box.innerHTML = "";
+
+  const title = document.createElement("h3");
+  title.textContent = data.title;
+  box.appendChild(title);
+  const clock = document.createElement("h3");
+  box.appendChild(clock);
+
+  const order = shuffle(questions.map(function (q, i) {
+    return i;
+  }));
+  const radios = {};
+  for (let n = 0; n < order.length; n++) {
+    const idx = order[n];
+    const q = questions[idx];
+    const p = document.createElement("p");
+    p.textContent = (n + 1) + ". " + q.q;
+    box.appendChild(p);
+    addDiagram(box, q);
+    radios[idx] = [];
+    for (let j = 0; j < q.options.length; j++) {
+      const label = document.createElement("label");
+      label.className = "opt";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "ch" + idx;
+      radio.value = j;
+      label.appendChild(radio);
+      label.append(" " + String.fromCharCode(65 + j) + ". " + q.options[j]);
+      box.appendChild(label);
+      radios[idx].push(radio);
+    }
+  }
+
+  const submit = document.createElement("button");
+  submit.textContent = "Submit answers";
+  const leave = document.createElement("button");
+  leave.textContent = "Leave (you can come back until time is up)";
+  const result = document.createElement("h3");
+  box.appendChild(submit);
+  box.appendChild(leave);
+  box.appendChild(result);
+
+  function exitQuiz() {
+    clearInterval(challengeTimer);
+    releaseAwake();
+    inChallengeQuiz = false;
+    loadChallengeTab();
+  }
+  leave.addEventListener("click", exitQuiz);
+
+  let finished = false;
+  async function finish() {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    clearInterval(challengeTimer);
+    submit.disabled = true;
+    const picks = [];
+    for (let i = 0; i < questions.length; i++) {
+      let val = -1;
+      for (let j = 0; j < radios[i].length; j++) {
+        if (radios[i][j].checked) {
+          val = j;
+        }
+        radios[i][j].disabled = true;
+      }
+      picks.push(val);
+    }
+    result.textContent = "Submitting...";
+    const r = await db.rpc("submit_challenge", { p_id: c.id, p_picks: picks });
+    if (r.error) {
+      result.textContent = "Could not submit: " + r.error.message;
+      finished = false;
+      submit.disabled = false;
+      for (let i = 0; i < questions.length; i++) {
+        for (let j = 0; j < radios[i].length; j++) {
+          radios[i][j].disabled = false;
+        }
+      }
+      return;
+    }
+    releaseAwake();
+    result.textContent = "Submitted! You scored " + r.data.score + " / " +
+      r.data.total + ". The winner is announced when time is up.";
+    leave.textContent = "Back to challenges";
+  }
+  submit.addEventListener("click", finish);
+
+  function tick() {
+    const left = Math.round((endsAt - (Date.now() + offset)) / 1000);
+    if (left <= 0) {
+      clock.textContent = "Time is up!";
+      finish();
+      return;
+    }
+    clock.textContent = "⏱ " + Math.floor(left / 60) + ":" +
+      String(left % 60).padStart(2, "0");
+  }
+  tick();
+  challengeTimer = setInterval(tick, 1000);
+}
 async function checkSession() {
   const result = await db.auth.getSession();
   if (result.data.session) {

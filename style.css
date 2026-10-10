@@ -206,3 +206,13 @@ input[type="radio"] {
   background: #00008b;
   color: white;
 }
+.challengeCard {
+  background: white;
+  text-align: left;
+  margin: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+}
+.challengeCard h4 {
+  margin: 4px 0;
+}
