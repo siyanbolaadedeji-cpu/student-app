@@ -879,6 +879,7 @@ async function loadSubscribers() {
   const APPROVE_DAYS = 120;
   const box = document.getElementById("adminList");
   box.textContent = "Loading...";
+  refreshJambBadges();
 
   const reqs = await db.from("jamb_requests").select("*")
     .order("created_at", { ascending: false });
@@ -1754,15 +1755,7 @@ async function refreshBadges() {
     total += n;
   }
 
-  const pend = await db.from("jamb_requests")
-    .select("*", { count: "exact", head: true })
-    .eq("status", "pending");
-  const jr = await db.from("jamb_results")
-    .select("*", { count: "exact", head: true })
-    .gt("created_at", getSeen("jamb"));
-  const jn = (pend.error ? 0 : (pend.count || 0)) + (jr.error ? 0 : (jr.count || 0));
-  setBadge("showJamb", jn);
-  total += jn;
+  total += await refreshJambBadges();
 const cl = await db.from("challenges").select("id").is("start_at", null);
   const cp = await db.from("challenge_players").select("challenge_id");
   let ready = 0;
@@ -2267,6 +2260,67 @@ async function loadJambStudents() {
     box.appendChild(div);
   }
 }
+async function refreshJambBadges() {
+  const pend = await db.from("jamb_requests")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "pending");
+  const reg = await db.from("jamb_requests")
+    .select("*", { count: "exact", head: true })
+    .gt("created_at", getSeen("jambStudents"));
+  const res = await db.from("jamb_results")
+    .select("*", { count: "exact", head: true })
+    .gt("created_at", getSeen("jambResults"));
+  const acc = await db.from("jamb_access").select("department")
+    .gt("expires_at", new Date().toISOString());
+  const qz = await db.from("jamb_quizzes").select("department");
+
+  const nPend = pend.error ? 0 : (pend.count || 0);
+  const nReg = reg.error ? 0 : (reg.count || 0);
+  const nRes = res.error ? 0 : (res.count || 0);
+
+  let missing = 0;
+  if (acc.data && qz.data) {
+    const have = {};
+    for (let i = 0; i < qz.data.length; i++) {
+      have[qz.data[i].department] = true;
+    }
+    const need = {};
+    for (let i = 0; i < acc.data.length; i++) {
+      need[acc.data[i].department] = true;
+    }
+    for (const d in need) {
+      if (!have[d]) {
+        missing++;
+      }
+    }
+  }
+
+  setBadge("jSubs", nPend);
+  setBadge("jAll", nReg);
+  setBadge("jRes", nRes);
+  setBadge("jQz", missing);
+  const total = nPend + nReg + nRes + missing;
+  setBadge("showJamb", total);
+  return total;
+}
+
+document.getElementById("jAll").addEventListener("click", function () {
+  markSeen("jambStudents");
+  refreshJambBadges();
+});
+
+document.getElementById("jRes").addEventListener("click", function () {
+  markSeen("jambResults");
+  refreshJambBadges();
+});
+
+setInterval(function () {
+  const panel = document.getElementById("jambPanel");
+  const view = document.getElementById("adminView");
+  if (!panel.classList.contains("hidden") && !view.classList.contains("hidden")) {
+    refreshJambBadges();
+  }
+}, 20000);
   async function checkAdminSession() {
     const s = await db.auth.getSession();
     if (s.data.session) {
