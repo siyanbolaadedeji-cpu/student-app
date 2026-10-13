@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ACE Academy</title>
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
@@ -107,6 +107,7 @@
   <button class="menuBtn regularBtn" data-tab="questionsTab">Questions</button>
   <button class="menuBtn regularBtn" data-tab="timetableTab">Timetable</button>
 <button class="menuBtn regularBtn" data-tab="englishTab">Daily Quizzes</button>
+<button class="menuBtn regularBtn" data-tab="workTab">Class Work</button>
 <button class="menuBtn regularBtn" data-tab="challengeTab">Challenge</button>
   <button class="menuBtn jambBtn" data-tab="jambTab">JAMB</button>
   <div id="notesTab" class="tab">
@@ -185,6 +186,10 @@
 <div id="englishTab" class="tab hidden">
    <h2>Daily Quizzes</h2>
     <div id="englishBody"></div>
+  </div>
+  <div id="workTab" class="tab hidden">
+    <h2>Class Work</h2>
+    <div id="workBody"></div>
   </div>
   <div id="challengeTab" class="tab hidden">
     <h2>Challenges</h2>
@@ -387,6 +392,9 @@ function showTab(id) {
   }
   if (id === "challengeTab") {
     loadChallengeTab();
+  }
+  if (id === "workTab") {
+    loadWork();
   }
   markSeenTab(id);
 }
@@ -1676,7 +1684,8 @@ function addDiagram(parent, q) {
 const badgeKinds = [
   { kind: "quizzes", table: "quizzes", tab: "questionsTab" },
   { kind: "daily", table: "english_sets", tab: "englishTab" },
-  { kind: "jamb", table: "jamb_quizzes", tab: "jambTab" }
+  { kind: "jamb", table: "jamb_quizzes", tab: "jambTab" },
+  { kind: "classwork", table: "classwork", tab: "workTab" }
 ];
 
 function seenList(kind) {
@@ -2131,6 +2140,86 @@ async function openChallengeQuiz(c) {
   }
   tick();
   challengeTimer = setInterval(tick, 1000);
+}
+async function loadWork() {
+  const box = document.getElementById("workBody");
+  box.textContent = "Loading...";
+  const res = await db.from("classwork").select("*")
+    .order("publish_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = "Could not load class work.";
+    return;
+  }
+  if (res.data.length === 0) {
+    box.textContent = "No class work yet.";
+    return;
+  }
+
+  const today = new Date().toLocaleDateString("en-CA");
+  for (let i = 0; i < res.data.length; i++) {
+    const w = res.data[i];
+    const card = document.createElement("div");
+    card.className = "workCard";
+
+    const title = document.createElement("h4");
+    title.textContent = w.title;
+    card.appendChild(title);
+
+    const meta = document.createElement("p");
+    meta.textContent = (w.subject ? w.subject + " - " : "") + "posted " +
+      new Date(w.publish_date + "T00:00:00").toLocaleDateString();
+    card.appendChild(meta);
+
+    if (w.deadline) {
+      const due = document.createElement("p");
+      due.textContent = "Deadline: " +
+        new Date(w.deadline + "T00:00:00").toLocaleDateString();
+      if (w.deadline < today) {
+        due.textContent += " (passed)";
+        due.className = "late";
+      } else if (w.deadline === today) {
+        due.textContent += " (today)";
+        due.className = "late";
+      }
+      card.appendChild(due);
+    }
+
+    if (w.body) {
+      const text = document.createElement("div");
+      text.className = "workText";
+      text.textContent = w.body;
+      card.appendChild(text);
+    }
+
+    if (w.file_path) {
+      const holder = document.createElement("div");
+      card.appendChild(holder);
+      const isImage = w.file_type && w.file_type.indexOf("image/") === 0;
+      db.storage.from("classwork").createSignedUrl(w.file_path, 3600)
+        .then(function (sg) {
+          if (!sg.data) {
+            return;
+          }
+          const a = document.createElement("a");
+          a.href = sg.data.signedUrl;
+          a.target = "_blank";
+          if (isImage) {
+            const img = document.createElement("img");
+            img.className = "qimg";
+            img.alt = "Class work";
+            img.src = sg.data.signedUrl;
+            a.appendChild(img);
+          } else {
+            a.className = "workLink";
+            a.textContent = "📄 Open the PDF";
+          }
+          holder.appendChild(a);
+        });
+    }
+    box.appendChild(card);
+  }
 }
 async function checkSession() {
   const result = await db.auth.getSession();

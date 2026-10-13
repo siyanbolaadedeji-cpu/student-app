@@ -3,7 +3,7 @@
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ACE Academy Admin</title>
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
   <style>
     .group { text-align: left; margin: 10px; padding: 10px;
              background: white; border-radius: 10px; }
@@ -50,6 +50,7 @@
     <button id="showQuizzes">Quizzes</button>
     <button id="showSchools">Schools</button>
     <button id="showEnglish">Daily Quizzes</button>
+    <button id="showWork">Class Work</button>
     <button id="showChallenges">Challenges</button>
     <button id="showJamb">JAMB</button>
     <button id="adminLogout">Log out</button>
@@ -141,6 +142,55 @@
     <br><br>
     <button id="cSend">Schedule challenge</button>
     <p id="cMsg"></p>
+  </div>
+  <div id="workPanel" class="group hidden">
+    <h3>Post class work</h3>
+    <input id="wTitle" placeholder="Title, e.g. Physics assignment 1">
+    <br><br>
+    <select id="wSubject">
+      <option>English Language</option>
+      <option>Mathematics</option>
+      <option>Physics</option>
+      <option>Chemistry</option>
+      <option>Biology</option>
+      <option>Further Mathematics</option>
+      <option>Economics</option>
+      <option>Government</option>
+      <option>Literature in English</option>
+      <option>Commerce</option>
+      <option>Financial Accounting</option>
+      <option>Civic Education</option>
+      <option>Computer Studies</option>
+      <option>Agricultural Science</option>
+      <option>Geography</option>
+    </select>
+    <br><br>
+    <select id="wSchool"><option value="">All schools</option></select>
+    <br><br>
+    <select id="wAudience">
+      <option value="All">All classes</option>
+      <option value="JSS">All JSS</option>
+      <option value="SS">All SS</option>
+      <option value="JSS 1">JSS 1</option>
+      <option value="JSS 2">JSS 2</option>
+      <option value="JSS 3">JSS 3</option>
+      <option value="SS 1">SS 1</option>
+      <option value="SS 2">SS 2</option>
+      <option value="SS 3">SS 3</option>
+    </select>
+    <br><br>
+    <label for="wDate">Release date</label><br>
+    <input id="wDate" type="date">
+    <br><br>
+    <label for="wDeadline">Deadline (optional)</label><br>
+    <input id="wDeadline" type="date">
+    <br><br>
+    <textarea id="wBody" rows="8" placeholder="Type or paste the questions here (optional if you attach a file)"></textarea>
+    <br><br>
+    <input id="wFile" type="file" accept="image/*,application/pdf">
+    <br><br>
+    <button id="wSend">Post</button>
+    <p id="wMsg"></p>
   </div>
   <div id="jambPanel" class="group hidden">
     <button id="jSubs" onclick="loadSubscribers()">Subscribers</button>
@@ -1657,6 +1707,7 @@ const viewTitles = {
   showJamb: "JAMB",
   showSchools: "Schools",
   showChallenges: "Challenges",
+  showWork: "Class Work",
 };
 
 function enterView(title) {
@@ -1670,7 +1721,7 @@ function enterView(title) {
 function goMenu() {
   document.getElementById("adminView").classList.add("hidden");
   document.getElementById("adminMenu").classList.remove("hidden");
-  const panels = ["quizForm", "msgBox", "jambPanel", "englishPanel", "challengePanel"];
+  const panels = ["quizForm", "msgBox", "jambPanel", "englishPanel", "challengePanel", "workPanel"];
   for (let i = 0; i < panels.length; i++) {
     document.getElementById(panels[i]).classList.add("hidden");
   }
@@ -2321,6 +2372,203 @@ setInterval(function () {
     refreshJambBadges();
   }
 }, 20000);
+function shrinkWork(file) {
+  return new Promise(function (resolve) {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = function () {
+      const max = 2000;
+      let w = img.width;
+      let h = img.height;
+      if (w > max || h > max) {
+        const scale = max / Math.max(w, h);
+        w = Math.round(w * scale);
+        h = Math.round(h * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(function (blob) {
+        URL.revokeObjectURL(url);
+        resolve(blob);
+      }, "image/jpeg", 0.85);
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    img.src = url;
+  });
+}
+
+async function fillWorkSchools() {
+  await fillSchools();
+  const src = document.getElementById("eSchool");
+  const dst = document.getElementById("wSchool");
+  const keep = dst.value;
+  dst.innerHTML = src.innerHTML;
+  dst.value = keep;
+}
+
+document.getElementById("showWork").addEventListener("click", async function () {
+  document.getElementById("workPanel").classList.remove("hidden");
+  document.getElementById("searchBox").classList.add("hidden");
+  document.getElementById("wDate").value = new Date().toLocaleDateString("en-CA");
+  document.getElementById("wMsg").textContent = "";
+  await fillWorkSchools();
+  loadWorkList();
+});
+
+document.getElementById("wSend").addEventListener("click", async function () {
+  const btn = this;
+  const msg = document.getElementById("wMsg");
+  const title = document.getElementById("wTitle").value.trim();
+  const body = document.getElementById("wBody").value.trim();
+  const date = document.getElementById("wDate").value;
+  const deadline = document.getElementById("wDeadline").value;
+  const file = document.getElementById("wFile").files[0];
+
+  if (title === "" || date === "") {
+    msg.textContent = "Add a title and a release date.";
+    return;
+  }
+  if (body === "" && !file) {
+    msg.textContent = "Type the questions or attach a file.";
+    return;
+  }
+  if (deadline && deadline < date) {
+    msg.textContent = "The deadline cannot be before the release date.";
+    return;
+  }
+  if (file && file.type !== "application/pdf" && file.type.indexOf("image/") !== 0) {
+    msg.textContent = "Attach a photo or a PDF.";
+    return;
+  }
+  if (file && file.type === "application/pdf" && file.size > 15 * 1024 * 1024) {
+    msg.textContent = "That PDF is over 15 MB.";
+    return;
+  }
+
+  btn.disabled = true;
+  msg.textContent = "Posting...";
+  let path = null;
+  let type = null;
+  if (file) {
+    let out = file;
+    let ext = "pdf";
+    type = "application/pdf";
+    if (file.type.indexOf("image/") === 0) {
+      out = await shrinkWork(file);
+      if (!out) {
+        msg.textContent = "Could not read that image.";
+        btn.disabled = false;
+        return;
+      }
+      ext = "jpg";
+      type = "image/jpeg";
+    }
+    path = "w/" + Date.now() + "." + ext;
+    const up = await db.storage.from("classwork").upload(path, out, { contentType: type });
+    if (up.error) {
+      msg.textContent = "Upload failed: " + up.error.message;
+      btn.disabled = false;
+      return;
+    }
+  }
+
+  const school = document.getElementById("wSchool").value;
+  const res = await db.from("classwork").insert({
+    title: title,
+    subject: document.getElementById("wSubject").value,
+    body: body === "" ? null : body,
+    file_path: path,
+    file_type: type,
+    publish_date: date,
+    deadline: deadline === "" ? null : deadline,
+    audience: document.getElementById("wAudience").value,
+    school_key: school === "" ? null : school
+  });
+  if (res.error) {
+    if (path) {
+      await db.storage.from("classwork").remove([path]);
+    }
+    msg.textContent = "Could not post: " + res.error.message;
+    btn.disabled = false;
+    return;
+  }
+  msg.textContent = "Posted for " + date + "!";
+  document.getElementById("wTitle").value = "";
+  document.getElementById("wBody").value = "";
+  document.getElementById("wDeadline").value = "";
+  document.getElementById("wFile").value = "";
+  btn.disabled = false;
+  loadWorkList();
+});
+
+async function loadWorkList() {
+  const box = document.getElementById("adminList");
+  box.textContent = "Loading...";
+  const res = await db.from("classwork").select("*")
+    .order("publish_date", { ascending: false });
+  box.innerHTML = "";
+  if (res.error) {
+    box.textContent = res.error.message;
+    return;
+  }
+  if (res.data.length === 0) {
+    box.textContent = "No class work posted yet.";
+    return;
+  }
+
+  const today = new Date().toLocaleDateString("en-CA");
+  const parts = [
+    { name: "Upcoming", rows: [] },
+    { name: "Published", rows: [] }
+  ];
+  for (let i = 0; i < res.data.length; i++) {
+    parts[res.data[i].publish_date > today ? 0 : 1].rows.push(res.data[i]);
+  }
+
+  for (let g = 0; g < parts.length; g++) {
+    const div = document.createElement("div");
+    div.className = "group";
+    const h = document.createElement("h3");
+    h.textContent = parts[g].name + " (" + parts[g].rows.length + ")";
+    div.appendChild(h);
+    for (let i = 0; i < parts[g].rows.length; i++) {
+      const w = parts[g].rows[i];
+      const p = document.createElement("p");
+      p.textContent = w.publish_date + " - " + (w.subject || "") + " - " +
+        schoolLabel(w.school_key) + " / " + w.audience + " - " + w.title +
+        (w.file_path ? " 📎" : "") +
+        (w.deadline ? " - due " + w.deadline : "") + " ";
+      const del = document.createElement("button");
+      del.className = "delBtn";
+      del.textContent = "Delete";
+      del.addEventListener("click", async function () {
+        if (!confirm("Delete this class work?")) {
+          return;
+        }
+        if (w.file_path) {
+          await db.storage.from("classwork").remove([w.file_path]);
+        }
+        const r = await db.from("classwork").delete().eq("id", w.id).select();
+        if (r.error || !r.data || r.data.length === 0) {
+          alert("Could not delete the class work.");
+          return;
+        }
+        p.remove();
+      });
+      p.appendChild(del);
+      div.appendChild(p);
+    }
+    box.appendChild(div);
+  }
+}
   async function checkAdminSession() {
     const s = await db.auth.getSession();
     if (s.data.session) {
