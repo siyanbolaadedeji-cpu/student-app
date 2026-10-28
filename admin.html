@@ -187,7 +187,11 @@
     <br><br>
     <textarea id="wBody" rows="8" placeholder="Type or paste the questions here (optional if you attach a file)"></textarea>
     <br><br>
-    <input id="wFile" type="file" accept="image/*,application/pdf">
+        <label for="wImage">Photo (optional)</label><br>
+    <input id="wImage" type="file" accept="image/*">
+    <br><br>
+    <label for="wPdf">Or a PDF (optional)</label><br>
+    <input id="wPdf" type="file" accept="application/pdf">
     <br><br>
     <button id="wSend">Post</button>
     <p id="wMsg"></p>
@@ -2430,7 +2434,8 @@ document.getElementById("wSend").addEventListener("click", async function () {
   const body = document.getElementById("wBody").value.trim();
   const date = document.getElementById("wDate").value;
   const deadline = document.getElementById("wDeadline").value;
-  const file = document.getElementById("wFile").files[0];
+    const file = document.getElementById("wImage").files[0] ||
+    document.getElementById("wPdf").files[0];
 
   if (title === "" || date === "") {
     msg.textContent = "Add a title and a release date.";
@@ -2504,7 +2509,8 @@ document.getElementById("wSend").addEventListener("click", async function () {
   document.getElementById("wTitle").value = "";
   document.getElementById("wBody").value = "";
   document.getElementById("wDeadline").value = "";
-  document.getElementById("wFile").value = "";
+    document.getElementById("wImage").value = "";
+  document.getElementById("wPdf").value = "";
   btn.disabled = false;
   loadWorkList();
 });
