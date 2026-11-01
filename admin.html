@@ -231,6 +231,9 @@
     <br><br>
     <textarea id="jqJson" rows="8" placeholder="Paste the AI's questions here"></textarea>
     <br><br>
+        <label for="jqDate">Release date</label><br>
+    <input id="jqDate" type="date">
+    <br><br>
     <div id="jqDia"></div>
     <button id="sendJq">Send to department</button>
     <p id="jqMsg"></p>
@@ -843,6 +846,7 @@ document.getElementById("showJamb").addEventListener("click", function () {
   document.getElementById("jambPanel").classList.remove("hidden");
   document.getElementById("searchBox").classList.add("hidden");
   document.getElementById("pinOut").textContent = "";
+    document.getElementById("jqDate").value = new Date().toLocaleDateString("en-CA");
   loadSubscribers();
   document.getElementById("englishPanel").classList.add("hidden");
 });
@@ -915,16 +919,24 @@ document.getElementById("sendJq").addEventListener("click", async function () {
     return;
   }
   msg.textContent = "Sending...";
+    const date = document.getElementById("jqDate").value;
+  if (date === "") {
+    msg.textContent = "Choose a release date.";
+    return;
+  }
   const res = await db.from("jamb_quizzes").insert({
     department: dept,
     title: title,
+    publish_date: date,
     questions: parsed.questions
   });
   if (res.error) {
     msg.textContent = "Could not send: " + res.error.message;
     return;
   }
-  msg.textContent = "Sent to " + dept + "! (" + parsed.questions.length + " questions)";
+    msg.textContent = (date <= new Date().toLocaleDateString("en-CA")
+    ? "Sent to " : "Scheduled for " + date + " to ") + dept + "! (" +
+    parsed.questions.length + " questions)";
   jqDia.reset();
   document.getElementById("jqJson").value = "";
 });
@@ -1173,8 +1185,8 @@ async function loadJambQuizzes() {
   const box = document.getElementById("adminList");
   box.textContent = "Loading...";
   const res = await db.from("jamb_quizzes")
-    .select("id, department, title, questions, created_at")
-    .order("created_at", { ascending: false });
+    .select("id, department, title, questions, created_at, publish_date")
+    .order("publish_date", { ascending: false });
 
   box.innerHTML = "";
   if (res.error) {
@@ -1200,7 +1212,8 @@ async function loadJambQuizzes() {
     for (let i = 0; i < list.length; i++) {
       const q = list[i];
       const p = document.createElement("p");
-      p.textContent = new Date(q.created_at).toLocaleDateString() + " - " +
+            const upcoming = q.publish_date > new Date().toLocaleDateString("en-CA");
+      p.textContent = (upcoming ? "⏳ releases " : "") + q.publish_date + " - " +
         q.title + " (" + q.questions.length + " questions) ";
       const del = document.createElement("button");
       del.className = "delBtn";
@@ -2327,7 +2340,8 @@ async function refreshJambBadges() {
     .gt("created_at", getSeen("jambResults"));
   const acc = await db.from("jamb_access").select("department")
     .gt("expires_at", new Date().toISOString());
-  const qz = await db.from("jamb_quizzes").select("department");
+  const qz = await db.from("jamb_quizzes").select("department")
+    .lte("publish_date", new Date().toLocaleDateString("en-CA"));
 
   const nPend = pend.error ? 0 : (pend.count || 0);
   const nReg = reg.error ? 0 : (reg.count || 0);
