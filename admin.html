@@ -237,6 +237,12 @@
     <div id="jqDia"></div>
     <button id="sendJq">Send to department</button>
     <p id="jqMsg"></p>
+        <hr>
+    <h3>Test a notification</h3>
+    <input id="tUser" placeholder="JAMB student's username">
+    <br><br>
+    <button id="tSend">Send test notification</button>
+    <p id="tMsg"></p>
   </div>
   <div id="adminList"></div>
 </div>
@@ -2589,6 +2595,25 @@ async function loadWorkList() {
     box.appendChild(div);
   }
 }
+document.getElementById("tSend").addEventListener("click", async function () {
+  const msg = document.getElementById("tMsg");
+  const user = document.getElementById("tUser").value.trim();
+  if (user === "") {
+    msg.textContent = "Type the student's username.";
+    return;
+  }
+  msg.textContent = "Sending...";
+    const res = await db.functions.invoke("hyper-action", {
+    body: { test_username: user }
+  });
+  if (res.error) {
+    msg.textContent = "Could not send: " + res.error.message;
+    return;
+  }
+  const d = res.data || {};
+  msg.textContent = "Sent to " + (d.sent || 0) + " phone(s). Failed: " +
+    (d.failed || 0) + (d.error ? " - " + d.error : "");
+});
   async function checkAdminSession() {
     const s = await db.auth.getSession();
     if (s.data.session) {
