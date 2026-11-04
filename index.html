@@ -2236,8 +2236,12 @@ function keyToBytes(b64) {
 }
 
 function addNotifyButton(parent) {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window) ||
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) ||
       !("Notification" in window)) {
+    const warn = document.createElement("p");
+    warn.textContent = "🔕 Notifications are not available in this browser. " +
+      "Open the app in Chrome, and update Chrome in the Play Store.";
+    parent.appendChild(warn);
     return;
   }
   const row = document.createElement("p");
