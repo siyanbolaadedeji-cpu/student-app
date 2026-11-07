@@ -2606,8 +2606,13 @@ document.getElementById("tSend").addEventListener("click", async function () {
     const res = await db.functions.invoke("hyper-action", {
     body: { test_username: user }
   });
-  if (res.error) {
-    msg.textContent = "Could not send: " + res.error.message;
+    if (res.error) {
+    let detail = res.error.message;
+    try {
+      const body = await res.error.context.json();
+      detail = body.error || body.message || detail;
+    } catch (e) {}
+    msg.textContent = "Could not send: " + detail;
     return;
   }
   const d = res.data || {};
